@@ -1,38 +1,71 @@
+#![feature(plugin, decl_macro)]
+#![plugin(rocket_codegen)]
 #![feature(test)]
+
+extern crate rocket;
+#[macro_use]
+extern crate rocket_contrib;
+
+use rocket::State;
+use std::sync::{Mutex, MutexGuard};
+use std::env;
+
 extern crate test;
 extern crate mysql;
-#[macro_use(object, array)]
+#[macro_use]
 extern crate json;
 extern crate time;
 
-use time::precise_time_ns;
 mod mods;
 mod tests;
-use mods::rbac::{Assignment,Data,Item};
+
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
+
+use rocket_contrib::Json;
+use time::precise_time_ns;
+use mods::rbac::{Assignment, Data, Item};
 use mods::phpdeserializer::Deserializer;
 use mysql as my;
-use std::collections::{HashSet};
-use std::sync::{Arc,Mutex};
+use serde_json::Value as JsonValue;
+use std::collections::{HashSet, HashMap};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Params {
+    user_id: String,
+    action: String,
+    params: Vec<JsonValue>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Out {
+    result: bool
+}
+
+#[post("/", format = "application/json", data = "<body>")]
+fn check(body: Json<Vec<Params>>, data: State<Mutex<Data>>) -> Json<Vec<Vec<bool>>> {
+    let rbac: MutexGuard<Data> = data.lock().expect("map lock.");
+    let mut out = Vec::new();
+    for item in body.iter() {
+        let mut r = Vec::new();
+        for param in item.params.iter() {
+            let action = item.action.clone();
+            let user = item.user_id.clone();
+            r.push(rbac.check_access(user, action, &param))
+        }
+        out.push(r);
+    }
+    Json(out)
+}
 
 fn main() {
-    let data = Arc::new(Mutex::new(load()));
-
-/*    for parent in data.parents.get("ncc.region.access").unwrap().iter() {
-        println!("{:?}", parent)
-    };*/
-    /*let params = object! {
-           "region" => "54",
-           "project" => "1",
-        };
-    let user = "14338667".to_string();
-    let action = "ncc.records.update.access".to_string();
-    */
-    let start = precise_time_ns();
-    //let r = data.check_access(user, action, &params);
-
-    let end = precise_time_ns();
-//    println!("{:?}", r);
-    println!("{} ns for whatever you did.", end - start);
+    let data = load();
+    println!("данные загружены");
+    rocket::ignite()
+        .mount("/check", routes![check])
+        .manage(Mutex::new(data))
+        .launch();
 }
 
 fn load() -> Data {

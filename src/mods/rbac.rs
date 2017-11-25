@@ -1,6 +1,7 @@
 extern crate json;
 use std::collections::{HashMap, HashSet};
 use json::JsonValue;
+use serde_json::Value as JsonValueS;
 
 #[derive(Debug)]
 pub struct Data {
@@ -36,7 +37,7 @@ impl Data {
         }
     }
 
-    pub fn check_access(&self, user_id: String, action: String, params: &JsonValue) -> bool {
+    pub fn check_access(&self, user_id: String, action: String, params: &JsonValueS) -> bool {
         if let Some(assignments) = self.assignments.get(&user_id) {
             return self.check(action, &assignments, params);
         }
@@ -46,7 +47,7 @@ impl Data {
     /**
     *   54ns
     **/
-    pub fn rule(&self, data: &JsonValue, params: &JsonValue) -> bool {
+    pub fn rule(&self, data: &JsonValue, params: &JsonValueS) -> bool {
         if let Some(key) = data["paramsKey"].as_str() {
             if let Some(value) = params[key].as_str() {
                 if data["data"].is_array() {
@@ -62,7 +63,7 @@ impl Data {
         }
     }
 
-    fn check(&self, action: String, assignments: &HashSet<String>, params: &JsonValue) -> bool {
+    fn check(&self, action: String, assignments: &HashSet<String>, params: &JsonValueS) -> bool {
         match self.items.get(&action) {
             Some(item) => {
                 if !self.rule(&item.data, params) {
