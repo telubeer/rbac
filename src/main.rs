@@ -1,38 +1,25 @@
 #![feature(test)]
 extern crate test;
 extern crate mysql;
-#[macro_use(object, array)]
-extern crate json;
-extern crate time;
+#[macro_use] extern crate json;
 
-use time::precise_time_ns;
 mod mods;
 mod tests;
-use mods::rbac::{Assignment,Data,Item};
+
+use mods::rbac::{Assignment, Data, Item};
 use mods::phpdeserializer::Deserializer;
+use mods::server::run;
 use mysql as my;
-use std::collections::{HashSet};
-use std::sync::{Arc,Mutex};
+use std::collections::HashSet;
+use std::{env};
+
 
 fn main() {
-    let data = Arc::new(Mutex::new(load()));
-
-/*    for parent in data.parents.get("ncc.region.access").unwrap().iter() {
-        println!("{:?}", parent)
-    };*/
-    /*let params = object! {
-           "region" => "54",
-           "project" => "1",
-        };
-    let user = "14338667".to_string();
-    let action = "ncc.records.update.access".to_string();
-    */
-    let start = precise_time_ns();
-    //let r = data.check_access(user, action, &params);
-
-    let end = precise_time_ns();
-//    println!("{:?}", r);
-    println!("{} ns for whatever you did.", end - start);
+    let bind_to = env::var("BIND").ok()
+            .expect("You should set ip:port in BIND env var");
+    let data = load();
+    println!("data loaded");
+    run(&bind_to, data);
 }
 
 fn load() -> Data {

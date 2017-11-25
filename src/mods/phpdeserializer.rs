@@ -46,7 +46,7 @@ impl<'de> Deserializer<'de> {
     fn numeric_array(&mut self, size: u8) -> json::JsonValue {
         let mut ar = json::JsonValue::new_array();
         for _n in 0..size {
-            self.read_until(';');
+            let _ = self.read_until(';');
             let mut delimiter = ';';
             if self.peek_char().unwrap() == 'a' {
                 delimiter = '}'
@@ -55,14 +55,14 @@ impl<'de> Deserializer<'de> {
             value.push(';');
             let mut d = Deserializer::from_str(&value);
             let v = d.parse();
-            ar.push(v);
+            let _ = ar.push(v);
         }
-        self.next_char();
+        let _ = self.next_char();
         return ar;
     }
 
     fn parse_array(&mut self, size: u8) -> json::JsonValue {
-        self.next_char();
+        let _ = self.next_char();
         if self.peek_char().unwrap() == 'i' {
             return self.numeric_array(size);
         }
@@ -76,22 +76,22 @@ impl<'de> Deserializer<'de> {
                 delimiter = '}'
             }
             let mut value = self.read_until(delimiter);
-            value.push(';');
+            let _ = value.push(';');
             let mut d = Deserializer::from_str(&value);
             let v = d.parse();
             hash[key] = v;
         }
-        self.next_char();
+        let _ = self.next_char();
         return hash;
     }
 
     pub fn parse(&mut self) -> json::JsonValue {
         let t = self.next_char().unwrap();
-        self.next_char();
+        let _ = self.next_char();
         match t {
             's' => {
                 let size: u8 = self.read_until(':').parse().unwrap();
-                self.next_char();
+                let _ = self.next_char();
                 let mut val = "\"".to_string();
                 val.push_str(self.read_chrs(size).as_ref());
                 val.push_str("\"");

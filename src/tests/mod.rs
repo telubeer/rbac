@@ -4,6 +4,17 @@ mod tests {
     use super::super::*;
     use std::collections::{HashSet};
 
+    impl Item {
+        pub fn new(name: String, item_type: i64) -> Self {
+            Item {
+                name,
+                rule: Some("".to_string()),
+                data: json::JsonValue::new_object(),
+                item_type,
+            }
+        }
+    }
+
     #[bench]
     fn bench_rua(b: &mut Bencher) {
         let d = load();

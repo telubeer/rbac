@@ -1,4 +1,7 @@
 extern crate json;
+extern crate bodyparser;
+extern crate serde_json;
+
 use std::collections::{HashMap, HashSet};
 use json::JsonValue;
 
@@ -90,13 +93,3 @@ impl Data {
     }
 }
 
-impl Item {
-    pub fn new(name: String, item_type: i64) -> Self {
-        Item {
-            name,
-            rule: Some("".to_string()),
-            data: json::JsonValue::new_object(),
-            item_type,
-        }
-    }
-}
