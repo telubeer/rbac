@@ -1,0 +1,3 @@
+FROM base/devel
+
+RUN curl https://sh.rustup.rs -sSf | sh -s  -- -y
