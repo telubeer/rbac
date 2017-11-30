@@ -3,6 +3,8 @@ extern crate iron;
 extern crate bodyparser;
 extern crate persistent;
 extern crate router;
+extern crate time;
+extern crate sys_info;
 
 use json::JsonValue;
 use self::iron::prelude::*;
@@ -11,6 +13,7 @@ use self::iron::status;
 use self::persistent::{State, Read};
 use self::iron::typemap::Key;
 use self::router::Router;
+use self::time::now;
 
 use mysql;
 use mysql::Pool;
@@ -24,6 +27,9 @@ pub struct DbPool;
 impl Key for DbPool {
     type Value = mysql::Pool;
 }
+#[derive(Copy, Clone)]
+pub struct  Uptime;
+impl Key for Uptime { type Value = i64; }
 
 fn handle(req: &mut Request) -> IronResult<Response> {
     let arc = req.get::<State<Data>>().unwrap();
@@ -66,14 +72,52 @@ fn reload(req: &mut Request) -> IronResult<Response> {
     Ok(Response::with((ContentType::json().0, status::Ok, json::stringify("reloaded successful"))))
 }
 
+fn health(req: &mut Request) -> IronResult<Response> {
+    let pool = &req.get::<Read<DbPool>>().unwrap();
+    let hostname = mark_as_running(pool.as_ref());
+    let start_time = &req.get::<Read<Uptime>>().unwrap();
+    let uptime = now().to_timespec().sec - start_time.as_ref();
+    let mem = self::sys_info::mem_info().unwrap();
+    let total = mem.total;
+    let free = mem.free;
+    let avail = mem.avail;
+    let data = object!{
+        "status" => "ok",
+        "uptime" => uptime,
+        "hostname" => hostname,
+        "memory" => object!{
+            "total" => total
+            "free" => free
+            "avail" => avail
+        }
+    };
+    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
+}
+
 pub fn run(listen: &str, data: Data, pool: Pool) {
+    let start_time = now().to_timespec().sec;
+    let hostname = mark_as_running(&pool);
+
     let mut router = Router::new();
     router.post("/check", handle, "check");
     router.post("/reload", reload, "reload");
+    router.get("/health", health, "health");
 
     let mut chain = Chain::new(router);
     chain.link(State::<Data>::both(data));
     chain.link(Read::<DbPool>::both(pool));
-    println!("start listening on {}", &listen);
+    chain.link(Read::<Uptime>::both(start_time));
+
+    println!("start listening on {} hostname {}", &listen, hostname);
     Iron::new(chain).http(listen).unwrap();
+}
+
+fn mark_as_running(pool: &Pool) -> String {
+    let hostname = self::sys_info::hostname().unwrap();
+    let mut stmt = pool
+        .prepare("INSERT INTO ngs_regionnews.auth_instances (ip)\
+         VALUES (:hostname) \
+         ON DUPLICATE KEY UPDATE time=NOW()").unwrap();
+    stmt.execute(params!{"hostname" => &hostname}).unwrap();
+    hostname
 }

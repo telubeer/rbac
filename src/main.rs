@@ -3,6 +3,9 @@ extern crate test;
 #[macro_use] extern crate json;
 #[macro_use] extern crate mysql;
 
+
+
+
 mod mods;
 mod tests;
 use mysql::Pool;
@@ -20,3 +23,4 @@ fn main() {
     println!("data loaded {:?}", data.assignments.len());
     run(&bind_to, data, pool);
 }
+
