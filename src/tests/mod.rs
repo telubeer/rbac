@@ -3,21 +3,21 @@ use test::Bencher;
 use super::*;
 use std::collections::HashSet;
 use super::mods::*;
-use super::json;
-
+use super::serde_json;
+/*
 #[bench]
 fn bench_rua(b: &mut Bencher) {
     let dsn = env::var("DSN").ok()
         .expect("You should set mysql connection settings mysql://user:pass@ip:port in DSN env var");
     let pool = Pool::new_manual(1, 1, &dsn).unwrap();
     let d = load(&pool);
-    let params = object! {
-           "region" => "54",
-           "project" => "1",
-        };
+    let params = json!({
+           "region" : "54",
+           "project" : "1",
+        });
     b.iter(|| {
         d.check_access(
-            "14338667".to_string(),
+            14338667,
             "ncc.records.update.access".to_string(),
             &params
         )
@@ -30,13 +30,13 @@ fn bench_rua2(b: &mut Bencher) {
         .expect("You should set mysql connection settings mysql://user:pass@ip:port in DSN env var");
     let pool = Pool::new_manual(1, 1, &dsn).unwrap();
     let d = load(&pool);
-    let params = object! {
-           "region" => "55",
-           "project" => "1",
-        };
+    let params = json!({
+           "region" : "55",
+           "project" : "1",
+        });
     b.iter(|| {
         d.check_access(
-            "14338667".to_string(),
+            14338667,
             "ncc.records.update.access".to_string(),
             &params
         )
@@ -59,35 +59,35 @@ fn bench_regions(b: &mut Bencher) {
 
     b.iter(|| {
         for region in regions.iter() {
-            let params = object! {"region" => *region};
-            d.check_access("11414968".to_string(), "ncc.region.access".to_string(), &params);
+            let params = json!({"region" : *region});
+            d.check_access(11414968, "ncc.region.access".to_string(), &params);
         }
     })
 }
 
 #[bench]
 fn bech_rule(b: &mut Bencher) {
-    let item = object! {
-            "paramsKey" => "pid",
-            "data" => array!["23", "312", "545", "66", "14338727"]
-            };
+    let item = json!({
+            "paramsKey" : "pid",
+            "data" : ["23", "312", "545", "66", "14338727"]
+            });
     let data = Data::new();
-    let params = object! { "pid" => "14338727"};
+    let params = json!({ "pid" : "14338727"});
     b.iter(|| {
         data.rule(&item, &params);
     });
 }
-
+*/
 #[test]
 fn it_works() {
     let data = mock_data();
-    let params = object! { "r" => "1" };
-    assert_eq!(true, data.check_access("1".to_string(), "action1".to_string(), &params));
-    assert_eq!(false, data.check_access("1".to_string(), "action2".to_string(), &params));
-    assert_eq!(false, data.check_access("2".to_string(), "action1".to_string(), &params));
-    assert_eq!(true, data.check_access("2".to_string(), "action2".to_string(), &params));
-    let params2 = object! {};
-    assert_eq!(false, data.check_access("2".to_string(), "action2".to_string(), &params2));
+    let params = json!({ "r" : "1" });
+    assert_eq!(true, data.check_access(1, "action1".to_string(), &params));
+    assert_eq!(false, data.check_access(1, "action2".to_string(), &params));
+    assert_eq!(false, data.check_access(2, "action1".to_string(), &params));
+    assert_eq!(true, data.check_access(2, "action2".to_string(), &params));
+    let params2 = json!({});
+    assert_eq!(false, data.check_access(2, "action2".to_string(), &params2));
 }
 
 #[test]
@@ -95,21 +95,21 @@ fn parse_php() {
     let test = r#"a:2:{s:9:"paramsKey";s:3:"pid";s:4:"data";a:1:{i:0;s:8:"14338727";}}"#;
     let mut d = Deserializer::from_str(test);
     let res = d.parse();
-    let r = object! {
-            "paramsKey" => "pid",
-            "data" => array!["14338727"]
-        };
+    let r = json!({
+            "paramsKey" : "pid",
+            "data" : ["14338727"]
+        });
     assert_eq!(res, r);
 }
 
 #[test]
 fn rule() {
-    let item = object! {
-            "paramsKey" => "pid",
-            "data" => array!["14338727"]
+    let item = RuleData{
+            paramsKey : Some("pid".to_string()),
+            data: Some(vec!["14338727".to_string()])
             };
     let data = Data::new();
-    let params = object! { "pid" => "14338727"};
+    let params = json!({ "pid" : "14338727"});
     assert!(data.rule(&item, &params));
 }
 
@@ -141,7 +141,7 @@ pub fn mock_data() -> Data {
             Assignment {
                 name: 0,
                 user_id: 1,
-                data: object! {},
+                data: RuleData { paramsKey: None, data: None },
             }
         ),
         (
@@ -149,32 +149,33 @@ pub fn mock_data() -> Data {
             Assignment {
                 name: 1,
                 user_id: 2,
-                data: object! {},
+                data: RuleData { paramsKey: None, data: None },
             }
         )
     ].iter().cloned().collect();
     data.items = [
         (0, Item {
             name: 0,
-            data: json::JsonValue::new_object()
+            data: RuleData { paramsKey: None, data: None }
         }),
         (1, Item {
             name: 1,
-            data: json::JsonValue::new_object()
+            data: RuleData { paramsKey: None, data: None }
         }), (2, Item {
             name: 2,
-            data: json::JsonValue::new_object()
+            data: RuleData { paramsKey: None, data: None }
         }),
         (3, Item {
             name: 3,
-            data: json::JsonValue::new_object()
+            data: RuleData { paramsKey: None, data: None }
         }),
         (4, Item {
             name: 4,
-            data: object! {
-                    "paramsKey" => "r",
-                    "data" => array!["1", "2"]
+            data: RuleData {
+                    paramsKey : Some("r".to_string()),
+                    data : Some(vec!["1".to_string(), "2".to_string()])
                 }
+
         })
     ].iter().cloned().collect();
     let action1_parents: HashSet<ItemId> = [0 as ItemId].iter().cloned().collect();

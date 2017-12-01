@@ -1,9 +1,10 @@
 extern crate mysql;
 extern crate time;
-use mods::rbac::{Assignment, Data, Item, ItemId, UserId};
+use mods::rbac::{Assignment, Data, Item, ItemId, UserId, RuleData};
 use mods::phpdeserializer::Deserializer;
 use std::collections::{HashSet, HashMap};
 use self::time::precise_time_ns;
+use serde_json::from_value;
 use mysql::Pool;
 
 pub fn load(pool: &Pool) -> Data {
@@ -74,7 +75,7 @@ fn process_childs(user_id: &UserId, parent: &ItemId, data: &mut Data, children: 
     }
 }
 
-fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, ItemId)>, Vec<Assignment>) {
+pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, ItemId)>, Vec<Assignment>) {
 //    let start = precise_time_ns();
     let mut counter:ItemId = 0;
     let mut map: HashMap<String, ItemId> = HashMap::new();
@@ -89,10 +90,15 @@ fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, 
                         counter += 1;
                         map.insert(name.clone(), counter.clone());
                     }
+                    let mut rule_data = RuleData::empty();
+                    let r = from_value(d.parse());
+                    if r.is_ok()  {
+                        rule_data = r.unwrap();
+                    }
                     Item {
                         name: map.get(&name).unwrap().clone(),
 //                        rule: row.take("rule").unwrap(),
-                        data: d.parse(),
+                        data: rule_data,
 //                        item_type: row.take("item_type").unwrap(),
                     }
                 }).collect()
@@ -113,11 +119,16 @@ fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, 
                     }
                     let user: String = row.take("user_id").unwrap();
                     let user_id: UserId = user.parse().unwrap();
+                    let mut rule_data = RuleData::empty();
+                    let r = from_value(d.parse());
+                    if r.is_ok()  {
+                        rule_data = r.unwrap();
+                    }
                     Assignment {
                         user_id,
                         name: map.get(&name).unwrap().clone(),
 //                        rule: row.take("rule").unwrap(),
-                        data: d.parse(),
+                        data: rule_data,
                     }
                 }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
             }).unwrap();

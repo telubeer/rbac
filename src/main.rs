@@ -1,7 +1,9 @@
 //#![feature(test,libc)]
 #![feature(test)]
 extern crate test;
-#[macro_use] extern crate json;
+extern crate serde;
+#[macro_use] extern crate serde_derive;
+#[macro_use] extern crate serde_json;
 #[macro_use] extern crate mysql;
 //extern crate libc;
 //extern {fn je_stats_print (write_cb: extern fn (*const libc::c_void, *const libc::c_char), cbopaque: *const libc::c_void, opts: *const libc::c_char);}

@@ -1,10 +1,5 @@
-extern crate json;
-extern crate bodyparser;
-extern crate serde_json;
-
 use std::collections::{HashMap, HashSet};
-use json::JsonValue;
-
+use serde_json::Value as JsonValue;
 pub type UserId = u32;
 pub type ItemId = u16;
 
@@ -17,17 +12,32 @@ pub struct Data {
     pub parents: HashMap<UserId, HashMap<ItemId, HashSet<ItemId>>>
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct RuleData {
+    pub paramsKey: Option<String>,
+    pub data: Option<Vec<String>>
+}
+
+impl RuleData {
+    pub fn empty() -> RuleData {
+        RuleData {
+            paramsKey: None,
+            data: None
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Item {
     pub name: ItemId,
-    pub data: json::JsonValue,
+    pub data: RuleData,
 }
 
 #[derive(Debug, Clone)]
 pub struct Assignment {
     pub user_id: UserId,
     pub name: ItemId,
-    pub data: json::JsonValue,
+    pub data: RuleData,
 }
 
 impl Data {
@@ -53,11 +63,12 @@ impl Data {
     /**
     *   54ns
     **/
-    pub fn rule(&self, data: &JsonValue, params: &JsonValue) -> bool {
-        if let Some(key) = data["paramsKey"].as_str() {
-            if let Some(value) = params[key].as_str() {
-                if data["data"].is_array() {
-                    return data["data"].contains(value);
+    pub fn rule(&self, data: &RuleData, params: &JsonValue) -> bool {
+        if let Some(key) = data.paramsKey.as_ref() {
+            let value = &params[&key];
+            if  value.is_string() {
+                if let Some(data) = data.data.as_ref() {
+                    return data.contains(&value.as_str().unwrap().to_string());
                 } else {
                     return true;
                 }

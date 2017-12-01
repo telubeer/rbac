@@ -1,4 +1,4 @@
-extern crate json;
+extern crate serde_json;
 extern crate iron;
 extern crate bodyparser;
 extern crate persistent;
@@ -6,7 +6,7 @@ extern crate router;
 extern crate time;
 extern crate sys_info;
 
-use json::JsonValue;
+use self::serde_json::Value as JsonValue;
 use self::iron::prelude::*;
 use self::iron::headers::ContentType;
 use self::iron::status;
@@ -35,31 +35,31 @@ fn handle(req: &mut Request) -> IronResult<Response> {
     let arc = req.get::<State<Data>>().unwrap();
     let data = arc.read().unwrap();
 
-    let mut out: JsonValue = array![];
+    let mut out: JsonValue = json!([]);
     let body = req.get::<bodyparser::Raw>();
     match body {
         Ok(Some(body)) => {
-            let items = json::parse(&body).unwrap();
-            for item in items.members() {
+            let items:JsonValue = serde_json::from_str(&body).unwrap();
+            for item in items.as_array().unwrap().iter() {
                 let user_id: UserId = item["user_id"].to_string().parse().unwrap();
-                let action = &item["action"];
-                let params = &item["params"];
-                let mut res: JsonValue = array![];
-                for param in params.members() {
+                let action = item["action"].as_str().unwrap();
+                let params = item["params"].as_array().unwrap();
+                let mut res: JsonValue = json!([]);
+                for param in params.iter() {
                     let result = data.check_access(
                         user_id,
                         action.to_string(),
                         &param
                     );
-                    let _ = res.push(result);
+                    let _ = res.as_array_mut().unwrap().push(JsonValue::Bool(result));
                 }
-                let _ = out.push(res);
+                let _ = out.as_array_mut().unwrap().push(res);
             }
         }
         Ok(None) => println!("No body"),
         Err(err) => println!("Error: {:?}", err)
     }
-    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(out))))
+    Ok(Response::with((ContentType::json().0, status::Ok, out.to_string())))
 }
 
 fn reload(req: &mut Request) -> IronResult<Response> {
@@ -73,11 +73,11 @@ fn reload(req: &mut Request) -> IronResult<Response> {
     let mut data= arc.write().unwrap();
     *data = new_data;
 
-    let data = object!{
-        "status" => "ok",
-        "users" => data.assignments.len(),
-    };
-    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
+    let data:JsonValue = json!({
+        "status" : "ok",
+        "users" : data.assignments.len(),
+    });
+    Ok(Response::with((ContentType::json().0, status::Ok, data.to_string())))
 }
 
 fn health(req: &mut Request) -> IronResult<Response> {
@@ -87,12 +87,12 @@ fn health(req: &mut Request) -> IronResult<Response> {
     let start_time = &req.get::<Read<Uptime>>().unwrap();
     let uptime = now().to_timespec().sec - start_time.as_ref();
 
-    let data = object!{
-        "status" => "ok",
-        "uptime" => uptime,
-        "hostname" => hostname,
-    };
-    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
+    let data:JsonValue = json!({
+        "status" : "ok",
+        "uptime" : uptime,
+        "hostname" : hostname,
+    });
+    Ok(Response::with((ContentType::json().0, status::Ok, data.to_string())))
 }
 
 pub fn run(listen: &str, data: Data, pool: Pool) {

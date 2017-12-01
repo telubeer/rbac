@@ -1,5 +1,6 @@
-extern crate json;
+extern crate serde_json;
 use std;
+use self::serde_json::Value as JsonValue;
 
 pub struct Deserializer<'de> {
     input: &'de str,
@@ -43,8 +44,8 @@ impl<'de> Deserializer<'de> {
         return buf;
     }
 
-    fn numeric_array(&mut self, size: u8) -> json::JsonValue {
-        let mut ar = json::JsonValue::new_array();
+    fn numeric_array(&mut self, size: u8) -> JsonValue {
+        let mut ar:JsonValue = json!([]);
         for _n in 0..size {
             let _ = self.read_until(';');
             let mut delimiter = ';';
@@ -55,18 +56,18 @@ impl<'de> Deserializer<'de> {
             value.push(';');
             let mut d = Deserializer::from_str(&value);
             let v = d.parse();
-            let _ = ar.push(v);
+            let _ = ar.as_array_mut().unwrap().push(v);
         }
         let _ = self.next_char();
         return ar;
     }
 
-    fn parse_array(&mut self, size: u8) -> json::JsonValue {
+    fn parse_array(&mut self, size: u8) -> JsonValue {
         let _ = self.next_char();
         if self.peek_char().unwrap() == 'i' {
             return self.numeric_array(size);
         }
-        let mut hash = json::JsonValue::new_object();
+        let mut hash = json!({});
         for _n in 0..size {
             let keyval = self.read_until(';');
             let mut key = "".to_string();
@@ -85,29 +86,28 @@ impl<'de> Deserializer<'de> {
         return hash;
     }
 
-    pub fn parse(&mut self) -> json::JsonValue {
+    pub fn parse(&mut self) -> JsonValue {
         let t = self.next_char().unwrap();
         let _ = self.next_char();
         match t {
             's' => {
                 let size: u8 = self.read_until(':').parse().unwrap();
                 let _ = self.next_char();
-                let mut val = "\"".to_string();
-                val.push_str(self.read_chrs(size).as_ref());
-                val.push_str("\"");
-                json::parse(&val).unwrap()
+                let val = self.read_chrs(size);
+                json!(val)
             }
             'i' => {
-                let mut val = "\"".to_string();
-                val.push_str(self.read_until(';').as_ref());
-                val.push_str("\"");
-                json::parse(&val).unwrap()
+//                let mut val = "\"".to_string();
+//                val.push_str(self.read_until(';').as_ref());
+//                val.push_str("\"");
+                let val = self.read_until(';');
+                json!(val)
             }
             'a' => {
                 let size: u8 = self.read_until(':').parse().unwrap();
                 self.parse_array(size)
             }
-            _ => json::Null
+            _ => JsonValue::Null
         }
     }
 }
