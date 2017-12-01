@@ -8,7 +8,7 @@ use mysql::Pool;
 
 pub fn load(pool: &Pool) -> Data {
     let (map, mut items, mut parents, mut assignments) = load_items(pool);
-    let start = precise_time_ns();
+//    let start = precise_time_ns();
 
     let mut data = Data::new();
     data.map = map;
@@ -45,7 +45,7 @@ pub fn load(pool: &Pool) -> Data {
         vec.push(child);
     }
 
-    let start1 = precise_time_ns();
+//    let start1 = precise_time_ns();
     for assignment in data.assignments.clone().iter() {
         let (user_id, roles) = assignment;
         if !data.parents.contains_key(user_id) {
@@ -55,8 +55,9 @@ pub fn load(pool: &Pool) -> Data {
             process_childs(&user_id, &role, &mut data, &children);
         }
     }
-    println!("parse childs {} ms", (precise_time_ns() - start1)/ 1000000);
-    println!("load time {} ms", (precise_time_ns() - start)/ 1000000);
+
+//    println!("parse childs {} ms", (precise_time_ns() - start1)/ 1000000);
+//    println!("load time {} ms", (precise_time_ns() - start)/ 1000000);
     return data;
 }
 
@@ -73,8 +74,8 @@ fn process_childs(user_id: &UserId, parent: &ItemId, data: &mut Data, children: 
     }
 }
 
-fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, ItemId)>, Vec<Assignment>) {
-    let start = precise_time_ns();
+pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, ItemId)>, Vec<Assignment>) {
+//    let start = precise_time_ns();
     let mut counter:ItemId = 0;
     let mut map: HashMap<String, ItemId> = HashMap::new();
     let items: Vec<Item> =
@@ -110,8 +111,10 @@ fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, 
                         counter += 1;
                         map.insert(name.clone(), counter.clone());
                     }
+                    let user: String = row.take("user_id").unwrap();
+                    let user_id: UserId = user.parse().unwrap();
                     Assignment {
-                        user_id: row.take("user_id").unwrap(),
+                        user_id,
                         name: map.get(&name).unwrap().clone(),
 //                        rule: row.take("rule").unwrap(),
                         data: d.parse(),
@@ -128,6 +131,6 @@ fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, 
                     return (map.get(&parent).unwrap().clone(), map.get(&child).unwrap().clone());
                 }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
             }).unwrap();
-    println!("fetch time {} ms", (precise_time_ns() - start)/ 1000000);
+//    println!("fetch time {} ms", (precise_time_ns() - start)/ 1000000);
     return (map, items, parents, assignments);
 }

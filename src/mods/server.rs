@@ -17,8 +17,8 @@ use self::time::now;
 
 use mysql;
 use mysql::Pool;
-use mods::loader::load;
-use mods::rbac::Data;
+use mods::loader::{load, load_items};
+use mods::rbac::{Data, UserId};
 
 impl Key for Data { type Value = Data; }
 
@@ -41,13 +41,13 @@ fn handle(req: &mut Request) -> IronResult<Response> {
         Ok(Some(body)) => {
             let items = json::parse(&body).unwrap();
             for item in items.members() {
-                let user_id = &item["user_id"];
+                let user_id: UserId = item["user_id"].to_string().parse().unwrap();
                 let action = &item["action"];
                 let params = &item["params"];
                 let mut res: JsonValue = array![];
                 for param in params.members() {
                     let result = data.check_access(
-                        user_id.to_string(),
+                        user_id,
                         action.to_string(),
                         &param
                     );
@@ -63,33 +63,33 @@ fn handle(req: &mut Request) -> IronResult<Response> {
 }
 
 fn reload(req: &mut Request) -> IronResult<Response> {
-    let arc = req.get::<State<Data>>().unwrap();
-    let mut data= arc.write().unwrap();
+
 
     let pool = &req.get::<Read<DbPool>>().unwrap();
-    *data = load(pool.as_ref());
-    println!("loaded {:?}", data.assignments.len());
-    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify("reloaded successful"))))
+    let new_data = load(pool.as_ref());
+
+    let arc = req.get::<State<Data>>().unwrap();
+    let mut data= arc.write().unwrap();
+    *data = new_data;
+
+    let data = object!{
+        "status" => "ok",
+        "users" => data.assignments.len(),
+    };
+    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
 }
 
 fn health(req: &mut Request) -> IronResult<Response> {
     let pool = &req.get::<Read<DbPool>>().unwrap();
     let hostname = mark_as_running(pool.as_ref());
+
     let start_time = &req.get::<Read<Uptime>>().unwrap();
     let uptime = now().to_timespec().sec - start_time.as_ref();
-    let mem = self::sys_info::mem_info().unwrap();
-    let total = mem.total;
-    let free = mem.free;
-    let avail = mem.avail;
+
     let data = object!{
         "status" => "ok",
         "uptime" => uptime,
         "hostname" => hostname,
-        "memory" => object!{
-            "total" => total
-            "free" => free
-            "avail" => avail
-        }
     };
     Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
 }

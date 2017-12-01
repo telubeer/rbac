@@ -5,8 +5,8 @@ extern crate serde_json;
 use std::collections::{HashMap, HashSet};
 use json::JsonValue;
 
-pub type UserId = String;
-pub type ItemId = i32;
+pub type UserId = u32;
+pub type ItemId = u16;
 
 #[derive(Debug)]
 pub struct Data {
@@ -25,7 +25,7 @@ pub struct Item {
 
 #[derive(Debug, Clone)]
 pub struct Assignment {
-    pub user_id: String,
+    pub user_id: UserId,
     pub name: ItemId,
     pub data: json::JsonValue,
 }
@@ -41,7 +41,7 @@ impl Data {
         }
     }
 
-    pub fn check_access(&self, user_id: String, action: String, params: &JsonValue) -> bool {
+    pub fn check_access(&self, user_id: UserId, action: String, params: &JsonValue) -> bool {
         if let Some(item_id) = self.map.get(&action) {
             if let Some(assignments) = self.assignments.get(&user_id) {
                 return self.check(&user_id, item_id.clone(), &assignments, params);
