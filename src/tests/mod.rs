@@ -116,21 +116,21 @@ fn rule() {
 pub fn mock_data() -> Data {
     let mut data = Data::new();
     data.map = [
-        ("admin".to_string(), 0 as i32),
-        ("user".to_string(), 1 as i32),
-        ("action1".to_string(), 2 as i32),
-        ("action2".to_string(), 3 as i32),
-        ("task1".to_string(), 4 as i32)
+        ("admin".to_string(), 0 as ItemId),
+        ("user".to_string(), 1 as ItemId),
+        ("action1".to_string(), 2 as ItemId),
+        ("action2".to_string(), 3 as ItemId),
+        ("task1".to_string(), 4 as ItemId)
     ].iter().cloned().collect();
 
 
     data.assignments = [
         (
-            "1".to_string(),
+            1,
             [0].iter().cloned().collect()
         ),
         (
-            "2".to_string(),
+            2,
             [1].iter().cloned().collect()
         )
     ].iter().cloned().collect();
@@ -140,7 +140,7 @@ pub fn mock_data() -> Data {
             0,
             Assignment {
                 name: 0,
-                user_id: "1".to_string(),
+                user_id: 1,
                 data: object! {},
             }
         ),
@@ -148,7 +148,7 @@ pub fn mock_data() -> Data {
             1,
             Assignment {
                 name: 1,
-                user_id: "2".to_string(),
+                user_id: 2,
                 data: object! {},
             }
         )
@@ -177,16 +177,16 @@ pub fn mock_data() -> Data {
                 }
         })
     ].iter().cloned().collect();
-    let action1_parents: HashSet<ItemId> = [0 as i32].iter().cloned().collect();
-    let action2_parents: HashSet<ItemId> = [4 as i32].iter().cloned().collect();
-    let task1_parents: HashSet<ItemId> = [1 as i32].iter().cloned().collect();
+    let action1_parents: HashSet<ItemId> = [0 as ItemId].iter().cloned().collect();
+    let action2_parents: HashSet<ItemId> = [4 as ItemId].iter().cloned().collect();
+    let task1_parents: HashSet<ItemId> = [1 as ItemId].iter().cloned().collect();
     data.parents = [
-        ("1".to_string(), [
-            (2 as i32, action1_parents)
+        (1, [
+            (2 as ItemId, action1_parents)
         ].iter().cloned().collect()),
-        ("2".to_string(), [
-            (3 as i32, action2_parents),
-            (4 as i32, task1_parents)
+        (2, [
+            (3 as ItemId, action2_parents),
+            (4 as ItemId, task1_parents)
         ].iter().cloned().collect())
     ].iter().cloned().collect();
 
