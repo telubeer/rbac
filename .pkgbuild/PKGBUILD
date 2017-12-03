@@ -1,0 +1,25 @@
+pkgname=rbac
+pkgver=20171203.8_8393e3f
+pkgrel=1
+pkgdesc="NCC RBAC service"
+arch=('i686' 'x86_64')
+license=('GPL')
+makedepends=()
+
+source=(
+    "rbac.service"
+)
+
+md5sums=(
+    'SKIP'
+)
+
+pkgver() {
+    cat ../version.txt
+}
+
+package() {
+    install -Dm 0644 "$srcdir/rbac.service" "$pkgdir/usr/lib/systemd/system/rbac.service"
+    install -Dm 0755 "../../target/release/rbac" "$pkgdir/usr/bin/rbac"
+    install -Dm 0644 "../../config.toml" "$pkgdir/etc/rbac/config.toml"
+}
