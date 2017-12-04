@@ -3,7 +3,7 @@ extern crate time;
 use mods::rbac::{Assignment, Data, Item, ItemId, UserId};
 use mods::phpdeserializer::Deserializer;
 use std::collections::{HashSet, HashMap};
-use self::time::precise_time_ns;
+//use self::time::precise_time_ns;
 use mysql::Pool;
 
 pub fn load(pool: &Pool) -> Data {

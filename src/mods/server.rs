@@ -17,7 +17,7 @@ use self::time::now;
 
 use mysql;
 use mysql::Pool;
-use mods::loader::{load, load_items};
+use mods::loader::{load};
 use mods::rbac::{Data, UserId};
 
 impl Key for Data { type Value = Data; }

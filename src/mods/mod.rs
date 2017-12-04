@@ -7,3 +7,8 @@ pub mod phpdeserializer;
 pub mod server;
 pub mod loader;
 pub mod config;
+
+#[cfg(test)]
+mod rbac_test;
+#[cfg(test)]
+pub mod phpdeserializer_test;
