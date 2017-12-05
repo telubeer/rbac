@@ -17,12 +17,23 @@ struct DbConfig {
     name: String,
 }
 #[derive(Deserialize, Debug)]
+struct OptionsConfig {
+    timer: u64
+}
+
+#[derive(Deserialize, Debug)]
 pub struct Config {
     server: ServerConfig,
-    db: DbConfig
+    db: DbConfig,
+    options: OptionsConfig
 }
 
 impl Config {
+
+    pub fn get_timer(&self) -> u64 {
+        self.options.timer
+    }
+
     pub fn get_bind(&self) -> String {
         let mut out: String = "".to_string();
         out.push_str(&self.server.host);

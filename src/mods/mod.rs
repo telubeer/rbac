@@ -1,5 +1,6 @@
 pub use self::rbac::*;
 pub use self::phpdeserializer::*;
+pub use self::server::*;
 pub use self::loader::*;
 pub use self::config::*;
 pub mod rbac;

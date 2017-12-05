@@ -5,35 +5,51 @@ extern crate persistent;
 extern crate router;
 extern crate time;
 extern crate sys_info;
+extern crate futures;
+extern crate tokio_core;
 
 use json::JsonValue;
 use self::iron::prelude::*;
 use self::iron::headers::ContentType;
-use self::iron::status;
-use self::persistent::{State, Read};
+use self::iron::{status, Listening};
+use self::persistent::{Read};
+use std::sync::{Arc, RwLock};
 use self::iron::typemap::Key;
 use self::router::Router;
 use self::time::now;
+use self::futures::sync::mpsc::Sender;
+use self::futures::{Future, Sink};
+use self::tokio_core::reactor::{Remote};
 
-use mysql;
-use mysql::Pool;
-use mods::loader::{load};
 use mods::rbac::{Data, UserId};
 
-impl Key for Data { type Value = Data; }
+header! { (XDataTimestamp, "X-Data-Timestamp") => [u32] }
 
 #[derive(Copy, Clone)]
-pub struct DbPool;
-impl Key for DbPool {
-    type Value = mysql::Pool;
+pub struct DataArc;
+
+impl Key for DataArc {
+    type Value = Arc<RwLock<Data>>;
 }
+
 #[derive(Copy, Clone)]
-pub struct  Uptime;
+pub struct Uptime;
+
 impl Key for Uptime { type Value = i64; }
 
+#[derive(Copy, Clone)]
+pub struct Tx;
+
+impl Key for Tx { type Value = Sender<i8>; }
+
+#[derive(Copy, Clone)]
+pub struct Rem;
+
+impl Key for Rem { type Value = Remote; }
+
 fn handle(req: &mut Request) -> IronResult<Response> {
-    let arc = req.get::<State<Data>>().unwrap();
-    let data = arc.read().unwrap();
+    let arc = req.get::<Read<DataArc>>().unwrap();
+    let data = arc.as_ref().read().unwrap();
 
     let mut out: JsonValue = array![];
     let body = req.get::<bodyparser::Raw>();
@@ -56,68 +72,69 @@ fn handle(req: &mut Request) -> IronResult<Response> {
                 let _ = out.push(res);
             }
         }
-        Ok(None) => println!("No body"),
-        Err(err) => println!("Error: {:?}", err)
+        Ok(None) => error!("No body"),
+        Err(err) => error!("Error: {:?}", err)
     }
-    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(out))))
+    let mut res = Response::with((ContentType::json().0, status::Ok, json::stringify(out)));
+    res.headers.set(XDataTimestamp(data.timestamp.to_owned()));
+    Ok(res)
 }
 
 fn reload(req: &mut Request) -> IronResult<Response> {
+    let tx_arc = &req.get::<Read<Tx>>().unwrap();
+    let tx = tx_arc.as_ref().clone();
+    let remote_arc = &req.get::<Read<Rem>>().unwrap();
+    let remote = remote_arc.as_ref();
+    remote.spawn(move|_| {
+        tx.send(2)
+            .then(|tx| {
+                match tx {
+                    Ok(_tx) => {
+                        debug!("send work");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        error!("send work failed! {:?}", e);
+                        Err(())
+                    }
+                }
+            })
+    });
 
-
-    let pool = &req.get::<Read<DbPool>>().unwrap();
-    let new_data = load(pool.as_ref());
-
-    let arc = req.get::<State<Data>>().unwrap();
-    let mut data= arc.write().unwrap();
-    *data = new_data;
-
-    let data = object!{
+    let data = object! {
         "status" => "ok",
-        "users" => data.assignments.len(),
     };
     Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
 }
 
 fn health(req: &mut Request) -> IronResult<Response> {
-    let pool = &req.get::<Read<DbPool>>().unwrap();
-    let hostname = mark_as_running(pool.as_ref());
-
+    let arc = req.get::<Read<DataArc>>().unwrap();
+    let data = arc.as_ref().read().unwrap();
     let start_time = &req.get::<Read<Uptime>>().unwrap();
     let uptime = now().to_timespec().sec - start_time.as_ref();
-
-    let data = object!{
+    let hostname = self::sys_info::hostname().unwrap();
+    let data = object! {
         "status" => "ok",
         "uptime" => uptime,
         "hostname" => hostname,
+        "data_timestamp" => data.timestamp
     };
     Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
 }
 
-pub fn run(listen: &str, data: Data, pool: Pool) {
+pub fn run(listen: &str, data: Arc<RwLock<Data>>, tx: Sender<i8>, remote: Remote) -> Listening {
     let start_time = now().to_timespec().sec;
-    let hostname = mark_as_running(&pool);
-
     let mut router = Router::new();
     router.post("/check", handle, "check");
     router.post("/reload", reload, "reload");
     router.get("/health", health, "health");
 
     let mut chain = Chain::new(router);
-    chain.link(State::<Data>::both(data));
-    chain.link(Read::<DbPool>::both(pool));
+    chain.link(Read::<DataArc>::both(data));
     chain.link(Read::<Uptime>::both(start_time));
+    chain.link(Read::<Tx>::both(tx));
+    chain.link(Read::<Rem>::both(remote));
 
-    println!("start listening on {} hostname {}", &listen, hostname);
-    Iron::new(chain).http(listen).unwrap();
-}
-
-fn mark_as_running(pool: &Pool) -> String {
-    let hostname = self::sys_info::hostname().unwrap();
-    let mut stmt = pool
-        .prepare("INSERT INTO ngs_regionnews.auth_instances (ip)\
-         VALUES (:hostname) \
-         ON DUPLICATE KEY UPDATE time=NOW()").unwrap();
-    stmt.execute(params!{"hostname" => &hostname}).unwrap();
-    hostname
+    println!("start listening on {} hostname {}", &listen, self::sys_info::hostname().unwrap());
+    Iron::new(chain).http(listen).unwrap()
 }

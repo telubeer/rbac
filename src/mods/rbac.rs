@@ -7,9 +7,11 @@ use json::JsonValue;
 
 pub type UserId = u32;
 pub type ItemId = u16;
+pub type Timestamp = u32;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Data {
+    pub timestamp: Timestamp,
     pub map: HashMap<String, ItemId>,
     pub assignments: HashMap<UserId, HashSet<ItemId>>,
     pub assignments_dict: HashMap<ItemId, Assignment>,
@@ -31,8 +33,9 @@ pub struct Assignment {
 }
 
 impl Data {
-    pub fn new() -> Self {
+    pub fn new(timestamp: Timestamp) -> Self {
         Data {
+            timestamp,
             assignments: HashMap::new(),
             assignments_dict: HashMap::new(),
             items: HashMap::new(),

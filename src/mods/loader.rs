@@ -1,16 +1,15 @@
 extern crate mysql;
 extern crate time;
-use mods::rbac::{Assignment, Data, Item, ItemId, UserId};
+use self::time::precise_time_ns;
+use mods::rbac::{Assignment, Data, Item, ItemId, UserId, Timestamp};
 use mods::phpdeserializer::Deserializer;
 use std::collections::{HashSet, HashMap};
-//use self::time::precise_time_ns;
-use mysql::Pool;
+use self::mysql::Pool;
 
-pub fn load(pool: &Pool) -> Data {
+pub fn load(pool: &Pool, timestamp: Timestamp) -> Data {
     let (map, mut items, mut parents, mut assignments) = load_items(pool);
 //    let start = precise_time_ns();
-
-    let mut data = Data::new();
+    let mut data = Data::new(timestamp);
     data.map = map;
 
     while items.len() > 0 {
@@ -45,7 +44,7 @@ pub fn load(pool: &Pool) -> Data {
         vec.push(child);
     }
 
-//    let start1 = precise_time_ns();
+    let start1 = precise_time_ns();
     for assignment in data.assignments.clone().iter() {
         let (user_id, roles) = assignment;
         if !data.parents.contains_key(user_id) {
@@ -56,7 +55,7 @@ pub fn load(pool: &Pool) -> Data {
         }
     }
 
-//    println!("parse childs {} ms", (precise_time_ns() - start1)/ 1000000);
+    info!("parse childs {} ms", (precise_time_ns() - start1)/ 1000000);
 //    println!("load time {} ms", (precise_time_ns() - start)/ 1000000);
     return data;
 }
@@ -74,10 +73,22 @@ fn process_childs(user_id: &UserId, parent: &ItemId, data: &mut Data, children: 
     }
 }
 
+pub fn get_timestamp(pool: &Pool) -> Timestamp {
+    let timestamp: Vec<Timestamp> =
+        pool.prep_exec("SELECT timestamp from ngs_regionnews.auth_timestamp where `index` = 0", ())
+            .map(|result| {
+                result.map(|x| x.unwrap()).map(|row| {
+                    row.get("timestamp").unwrap()
+                }).collect()
+            }).unwrap();
+    *timestamp.get(0).or(Some(&0)).unwrap()
+}
+
 pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, ItemId)>, Vec<Assignment>) {
-//    let start = precise_time_ns();
+    let start = precise_time_ns();
     let mut counter:ItemId = 0;
     let mut map: HashMap<String, ItemId> = HashMap::new();
+
     let items: Vec<Item> =
         pool.prep_exec("SELECT name, biz_rule as rule, data, type as item_type from ngs_regionnews.auth_item", ())
             .map(|result| {
@@ -131,6 +142,6 @@ pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(Item
                     return (map.get(&parent).unwrap().clone(), map.get(&child).unwrap().clone());
                 }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
             }).unwrap();
-//    println!("fetch time {} ms", (precise_time_ns() - start)/ 1000000);
+    info!("fetch time {} ms", (precise_time_ns() - start)/ 1000000);
     return (map, items, parents, assignments);
 }

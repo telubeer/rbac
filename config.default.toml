@@ -2,8 +2,10 @@
 host = "0.0.0.0"
 port = "8000"
 [db]
-host = "dbwrite-proxy"
+host = "dbread-proxy"
 port = "3306"
 user = "rbac"
 pass = "rbac"
 name = "ngs_regionnews"
+[options]
+timer = 60
