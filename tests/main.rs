@@ -74,7 +74,7 @@ mod bench {
          "paramsKey" => "pid",
          "data" => array!["23", "312", "545", "66", "14338727"]
          };
-        let data = Data::new();
+        let data = Data::new(0);
         let params = object! { "pid" => "14338727"};
         b.iter(|| {
             data.rule(&item, &params);

@@ -20,13 +20,26 @@ fn rule() {
             "paramsKey" => "pid",
             "data" => array!["14338727"]
             };
-    let data = Data::new();
+    let data = Data::new(0);
     let params = object! { "pid" => "14338727"};
     assert!(data.rule(&item, &params));
 }
 
+#[test]
+fn rule_template() {
+    let item = object! {
+            "paramsKey" => "template",
+            "data" => array![1,2,3,4,5]
+            };
+    let data = Data::new(0);
+    let params = object! { "template" => "1"};
+    assert!(!data.rule(&item, &params));
+    let params1 = object! { "template" => 1};
+    assert!(data.rule(&item, &params1));
+}
+
 pub fn mock_data() -> Data {
-    let mut data = Data::new();
+    let mut data = Data::new(0);
     data.map = [
         ("admin".to_string(), 0 as ItemId),
         ("user".to_string(), 1 as ItemId),

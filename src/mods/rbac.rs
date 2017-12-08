@@ -58,9 +58,9 @@ impl Data {
     **/
     pub fn rule(&self, data: &JsonValue, params: &JsonValue) -> bool {
         if let Some(key) = data["paramsKey"].as_str() {
-            if let Some(value) = params[key].as_str() {
+            if params.has_key(key) {
                 if data["data"].is_array() {
-                    return data["data"].contains(value);
+                    return data["data"].contains(params[key].clone());
                 } else {
                     return true;
                 }

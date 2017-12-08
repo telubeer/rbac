@@ -98,10 +98,7 @@ impl<'de> Deserializer<'de> {
                 json::parse(&val).unwrap()
             }
             'i' => {
-                let mut val = "\"".to_string();
-                val.push_str(self.read_until(';').as_ref());
-                val.push_str("\"");
-                json::parse(&val).unwrap()
+                json::parse(self.read_until(';').as_ref()).unwrap()
             }
             'a' => {
                 let size: u8 = self.read_until(':').parse().unwrap();
