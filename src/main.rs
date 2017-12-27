@@ -8,7 +8,8 @@ extern crate env_logger;
 
 use mysql::Pool;
 use std::sync::{Arc, RwLock};
-use rbac::mods::server::run;
+//use rbac::mods::server::run;
+use rbac::mods::gotham::start;
 use rbac::mods::loader::{load, get_timestamp};
 use rbac::mods::config::load_config;
 //use rbac::mods::rbac::Data;
@@ -39,10 +40,11 @@ fn main() {
     run_timer(config.get_timer(),tx.clone(), worker_core.remote());
 
     let data_arc_server = data_arc.clone();
-    let remote_server = worker_core.remote();
+//    let remote_server = worker_core.remote();
     thread::spawn(move || {
         info!("spawned server thread");
-        run(&bind_to, data_arc_server, tx.clone(), remote_server);
+        start(bind_to, data_arc_server);
+//        run(&bind_to, data_arc_server, tx.clone(), remote_server);
     });
 
     let data_worker = data_arc.clone();
