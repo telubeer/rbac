@@ -2,7 +2,6 @@ extern crate rbac;
 extern crate mysql;
 extern crate tokio_core;
 extern crate futures;
-extern crate persistent;
 #[macro_use] extern crate log;
 extern crate env_logger;
 

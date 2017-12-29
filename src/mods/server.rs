@@ -1,27 +1,184 @@
-extern crate json;
-extern crate iron;
-extern crate bodyparser;
-extern crate persistent;
-extern crate router;
-extern crate time;
-extern crate sys_info;
-extern crate futures;
-extern crate tokio_core;
+use net2;
+use net2::unix::UnixTcpBuilderExt;
 
-use json::JsonValue;
-use self::iron::prelude::*;
-use self::iron::headers::ContentType;
-use self::iron::{status, Listening};
-use self::persistent::{Read};
+use std::thread;
+use std::net::SocketAddr;
+
+use tokio_core::reactor::Core;
+use tokio_core::net::TcpListener;
+use tokio_core::reactor::Remote;
+
+use futures;
+use futures::Poll;
+use futures::future::FutureResult;
+use futures::{Future, Stream};
+use futures::sync::mpsc::Sender;
+
+extern crate time;
+extern crate futures_cpupool;
+extern crate num_cpus;
+
+use json;
+
 use std::sync::{Arc, RwLock};
-use self::iron::typemap::Key;
-use self::router::Router;
-use self::time::now;
-use self::futures::sync::mpsc::Sender;
-use self::futures::{Future, Sink};
-use self::tokio_core::reactor::{Remote};
 
 use mods::rbac::{Data, UserId};
+use json::JsonValue;
+use hyper;
+use hyper::{Post, Get, StatusCode};
+use hyper::header::ContentLength;
+use hyper::header::{Headers, ContentType};
+use hyper::server::{Http, Request, Response, Service};
+use std::str;
+use self::futures_cpupool::CpuPool;
+
+#[derive(Clone)]
+struct WebService {
+    thread_pool: CpuPool,
+    data: Arc<RwLock<Data>>,
+}
+
+impl WebService {
+    pub fn new(thread_pool: CpuPool, data: Arc<RwLock<Data>>) -> WebService {
+        WebService {
+            thread_pool,
+            data: data.clone(),
+        }
+    }
+}
+
+impl Service for WebService {
+    type Request = Request;
+    type Response = Response;
+    type Error = hyper::Error;
+    type Future = FutureResponse;
+
+    fn call(&self, req: Request) -> Self::Future {
+        let data = self.data.clone();
+        let threadp = self.thread_pool.clone();
+        let fr = match (req.method(), req.path()) {
+            (&Post, "/check") => {
+                let r =
+                    req.body().concat2()
+                        .map(|raw_body| {
+                            str::from_utf8(&raw_body).unwrap().to_string()
+                        })
+                        .map(move |body| {
+                            let items = json::parse(&body).unwrap();
+                            let mut out: JsonValue = array![];
+                            for item in items.members() {
+                                let user_id: UserId = item["user_id"].to_string().parse().unwrap();
+                                let action = &item["action"];
+                                let params = &item["params"];
+                                let mut res: JsonValue = array![];
+                                for param in params.members() {
+                                    let result = data.read().unwrap()
+                                        .check_access(
+                                            user_id,
+                                            action.to_string(),
+                                            &param,
+                                        );
+                                    let _ = res.push(result);
+                                }
+                                let _ = out.push(res);
+                            }
+                            Response::new().with_body(json::stringify(out))
+                        });
+
+                FutureResponse(Box::new(r))
+            }
+            _ => {
+                let res = Response::new().with_status(StatusCode::NotFound);
+                FutureResponse(Box::new(futures::finished(res)))
+            }
+        };
+        fr
+    }
+}
+
+
+pub struct FutureResponse(Box<Future<Item=Response, Error=hyper::Error>>);
+
+impl Future for FutureResponse {
+    type Item = Response;
+    type Error = hyper::Error;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        self.0.poll()
+    }
+}
+
+
+pub fn run(listen: &str, data: Arc<RwLock<Data>>, _tx: Sender<i8>, _remote: Remote) {
+    let addr = listen.to_string().parse().unwrap();
+    let num = num_cpus::get();
+    let protocol = Arc::new(Http::new());
+    for i in 0..num - 1 {
+        println!("spawn {:?}", i);
+        let protocol2 = protocol.clone();
+        let data_arc = data.clone();
+        thread::spawn(move || serve(&addr, &protocol2, data_arc));
+    }
+    println!("spawn {:?}", num);
+    serve(&addr, &protocol, data.clone());
+}
+
+fn serve(addr: &SocketAddr,
+         protocol: &Http,
+         data: Arc<RwLock<Data>>) {
+    let mut core = Core::new().unwrap();
+    let handle = core.handle();
+    let thread_pool = CpuPool::new(2);
+
+    let listener = net2::TcpBuilder::new_v4()
+        .unwrap()
+        .reuse_port(true)
+        .unwrap()
+        .bind(addr)
+        .unwrap()
+        .listen(50)
+        .unwrap();
+
+    let listener = TcpListener::from_listener(listener, addr, &handle).unwrap();
+    core.run(listener
+        .incoming()
+        .for_each(|(socket, addr)| {
+            let s = WebService::new(thread_pool.clone(), data.clone());
+            protocol.bind_connection(&handle, socket, addr, s);
+            Ok(())
+        })
+        .or_else(|e| -> FutureResult<(), ()> {
+            panic!("TCP listener failed: {}", e);
+        }))
+        .unwrap();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+
+
+
+
+
 
 header! { (XDataTimestamp, "X-Data-Timestamp") => [u32] }
 
@@ -138,3 +295,4 @@ pub fn run(listen: &str, data: Arc<RwLock<Data>>, tx: Sender<i8>, remote: Remote
     println!("start listening on {} hostname {}", &listen, self::sys_info::hostname().unwrap());
     Iron::new(chain).http(listen).unwrap()
 }
+*/
