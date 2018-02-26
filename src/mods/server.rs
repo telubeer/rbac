@@ -1,90 +1,70 @@
+extern crate actix;
+extern crate actix_web;
 extern crate json;
-extern crate iron;
-extern crate bodyparser;
-extern crate persistent;
-extern crate router;
 extern crate time;
 extern crate sys_info;
 extern crate futures;
 extern crate tokio_core;
 
 use json::JsonValue;
-use self::iron::prelude::*;
-use self::iron::headers::ContentType;
-use self::iron::{status, Listening};
-use self::persistent::{Read};
 use std::sync::{Arc, RwLock};
-use self::iron::typemap::Key;
-use self::router::Router;
 use self::time::now;
 use self::futures::sync::mpsc::Sender;
 use self::futures::{Future, Sink};
+use self::futures::future::{FutureResult, result};
 use self::tokio_core::reactor::{Remote};
 
 use mods::rbac::{Data, UserId};
 
-header! { (XDataTimestamp, "X-Data-Timestamp") => [u32] }
+use std::str;
+use self::actix::*;
+use self::actix_web::*;
 
-#[derive(Copy, Clone)]
-pub struct DataArc;
-
-impl Key for DataArc {
-    type Value = Arc<RwLock<Data>>;
+#[derive(Clone)]
+struct AppState {
+    data: Arc<RwLock<Data>>,
+    uptime: i64,
+    tx: Sender<i8>,
+    remote: Remote,
 }
 
-#[derive(Copy, Clone)]
-pub struct Uptime;
-
-impl Key for Uptime { type Value = i64; }
-
-#[derive(Copy, Clone)]
-pub struct Tx;
-
-impl Key for Tx { type Value = Sender<i8>; }
-
-#[derive(Copy, Clone)]
-pub struct Rem;
-
-impl Key for Rem { type Value = Remote; }
-
-fn handle(req: &mut Request) -> IronResult<Response> {
-    let arc = req.get::<Read<DataArc>>().unwrap();
-    let data = arc.as_ref().read().unwrap();
-
-    let mut out: JsonValue = array![];
-    let body = req.get::<bodyparser::Raw>();
-    match body {
-        Ok(Some(body)) => {
+fn handle(req: HttpRequest<AppState>) -> Box<Future<Item=HttpResponse, Error=Error>>  {
+    let data = req.state().data.clone();
+    req.body()
+        .from_err()
+        .map(|raw_body| {
+            str::from_utf8(&raw_body).unwrap().to_string()
+        })
+        .and_then(move | body| {
             let items = json::parse(&body).unwrap();
+            let mut out: JsonValue = array![];
             for item in items.members() {
                 let user_id: UserId = item["user_id"].to_string().parse().unwrap();
                 let action = &item["action"];
                 let params = &item["params"];
                 let mut res: JsonValue = array![];
                 for param in params.members() {
-                    let result = data.check_access(
-                        user_id,
-                        action.to_string(),
-                        &param
-                    );
+                    let result = data.read().unwrap()
+                        .check_access(
+                            user_id,
+                            action.to_string(),
+                            &param,
+                        );
                     let _ = res.push(result);
                 }
                 let _ = out.push(res);
             }
-        }
-        Ok(None) => error!("No body"),
-        Err(err) => error!("Error: {:?}", err)
-    }
-    let mut res = Response::with((ContentType::json().0, status::Ok, json::stringify(out)));
-    res.headers.set(XDataTimestamp(data.timestamp.to_owned()));
-    Ok(res)
+            Ok(HttpResponse::build(StatusCode::OK)
+                .content_type("application/json")
+               // .header("X-Data-Timestamp", data.read().unwrap().timestamp.to_owned())
+                .body(out.dump()).unwrap())
+        })
+        .responder()
 }
 
-fn reload(req: &mut Request) -> IronResult<Response> {
-    let tx_arc = &req.get::<Read<Tx>>().unwrap();
-    let tx = tx_arc.as_ref().clone();
-    let remote_arc = &req.get::<Read<Rem>>().unwrap();
-    let remote = remote_arc.as_ref();
+fn reload(req: HttpRequest<AppState>) -> Result<HttpResponse> {
+    let tx = req.state().tx.clone();
+    let remote = req.state().remote.clone();
     remote.spawn(move|_| {
         tx.send(2)
             .then(|tx| {
@@ -104,14 +84,15 @@ fn reload(req: &mut Request) -> IronResult<Response> {
     let data = object! {
         "status" => "ok",
     };
-    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
+    Ok(HttpResponse::build(StatusCode::OK)
+        .content_type("application/json")
+        .body(json::stringify(data)).unwrap())
 }
 
-fn health(req: &mut Request) -> IronResult<Response> {
-    let arc = req.get::<Read<DataArc>>().unwrap();
-    let data = arc.as_ref().read().unwrap();
-    let start_time = &req.get::<Read<Uptime>>().unwrap();
-    let uptime = now().to_timespec().sec - start_time.as_ref();
+fn health(req: HttpRequest<AppState>) -> Result<HttpResponse> {
+    let data = req.state().data.as_ref().read().unwrap();
+    let start_time = req.state().uptime;
+    let uptime = now().to_timespec().sec - start_time;
     let hostname = self::sys_info::hostname().unwrap();
     let data = object! {
         "status" => "ok",
@@ -119,22 +100,33 @@ fn health(req: &mut Request) -> IronResult<Response> {
         "hostname" => hostname,
         "data_timestamp" => data.timestamp
     };
-    Ok(Response::with((ContentType::json().0, status::Ok, json::stringify(data))))
+    Ok(HttpResponse::build(StatusCode::OK)
+        .content_type("application/json")
+        .body(json::stringify(data)).unwrap())
 }
 
-pub fn run(listen: &str, data: Arc<RwLock<Data>>, tx: Sender<i8>, remote: Remote) -> Listening {
-    let start_time = now().to_timespec().sec;
-    let mut router = Router::new();
-    router.post("/check", handle, "check");
-    router.post("/reload", reload, "reload");
-    router.get("/health", health, "health");
+pub fn run(listen: &str, data: Arc<RwLock<Data>>, tx: Sender<i8>, remote: Remote) {
+    let uptime = now().to_timespec().sec;
+    let sys = actix::System::new("rbac");
 
-    let mut chain = Chain::new(router);
-    chain.link(Read::<DataArc>::both(data));
-    chain.link(Read::<Uptime>::both(start_time));
-    chain.link(Read::<Tx>::both(tx));
-    chain.link(Read::<Rem>::both(remote));
+    let addr = HttpServer::new(
+        move || Application::with_state(AppState{
+            data: data.clone(),
+            uptime,
+            tx: tx.clone(),
+            remote: remote.clone()
+        })
+            // enable logger
+//            .middleware(middleware::Logger::default())
+            .resource("/check", |r| r.method(Method::POST).f(handle))
+            .resource("/reload", |r| r.method(Method::POST).f(reload))
+            .resource("/health", |r| r.method(Method::GET).f(health))
+        )
+        .keep_alive(None)
+        .shutdown_timeout(1)
+        .bind(listen).unwrap()
+        .start();
 
-    println!("start listening on {} hostname {}", &listen, self::sys_info::hostname().unwrap());
-    Iron::new(chain).http(listen).unwrap()
+    println!("Started http server: {}", listen);
+    let _ = sys.run();
 }

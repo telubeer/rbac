@@ -1,5 +1,4 @@
 extern crate json;
-extern crate bodyparser;
 extern crate serde_json;
 
 use std::collections::{HashMap, HashSet};

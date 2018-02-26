@@ -2,7 +2,6 @@ extern crate rbac;
 extern crate mysql;
 extern crate tokio_core;
 extern crate futures;
-extern crate persistent;
 #[macro_use] extern crate log;
 extern crate env_logger;
 
@@ -20,7 +19,7 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 
 
 fn main() {
-    env_logger::init().expect("Failed to initialize logger");
+    env_logger::init();
     let config = load_config();
     let bind_to = config.get_bind();
     let dsn = config.get_dsn();
