@@ -19,7 +19,7 @@ use futures::sync::mpsc::{channel, Receiver, Sender};
 
 
 fn main() {
-    env_logger::init().expect("Failed to initialize logger");
+    env_logger::init();
     let config = load_config();
     let bind_to = config.get_bind();
     let dsn = config.get_dsn();

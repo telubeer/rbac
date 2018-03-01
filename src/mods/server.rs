@@ -64,27 +64,33 @@ impl Service for WebService {
                             str::from_utf8(&raw_body).unwrap().to_string()
                         })
                         .map(move |body| {
-                            let items = json::parse(&body).unwrap();
-                            let mut out: JsonValue = array![];
-                            for item in items.members() {
-                                let user_id: UserId = item["user_id"].to_string().parse().unwrap();
-                                let action = &item["action"];
-                                let params = &item["params"];
-                                let mut res: JsonValue = array![];
-                                for param in params.members() {
-                                    let result = data.read().unwrap()
-                                        .check_access(
-                                            user_id,
-                                            action.to_string(),
-                                            &param,
-                                        );
-                                    let _ = res.push(result);
+                            match json::parse(&body) {
+                                Ok(items) => {
+                                    let mut out: JsonValue = array![];
+                                    for item in items.members() {
+                                        let user_id: UserId = item["user_id"].to_string().parse().unwrap();
+                                        let action = &item["action"];
+                                        let params = &item["params"];
+                                        let mut res: JsonValue = array![];
+                                        for param in params.members() {
+                                            let result = data.read().unwrap()
+                                                .check_access(
+                                                    user_id,
+                                                    action.to_string(),
+                                                    &param,
+                                                );
+                                            let _ = res.push(result);
+                                        }
+                                        let _ = out.push(res);
+                                    }
+                                    Response::new().with_body(json::stringify(out))
                                 }
-                                let _ = out.push(res);
+                                Err(e) => {
+                                    error!("bad request {}", e);
+                                    Response::new().with_status(StatusCode::BadRequest)
+                                }
                             }
-                            Response::new().with_body(json::stringify(out))
                         });
-
                 FutureResponse(Box::new(r))
             }
             _ => {
