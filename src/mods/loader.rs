@@ -1,8 +1,8 @@
 extern crate mysql;
 extern crate time;
+extern crate json;
 use self::time::precise_time_ns;
 use mods::rbac::{Assignment, Data, Item, ItemId, UserId, Timestamp};
-use mods::phpdeserializer::Deserializer;
 use std::collections::{HashSet, HashMap};
 use self::mysql::Pool;
 
@@ -56,7 +56,6 @@ pub fn load(pool: &Pool, timestamp: Timestamp) -> Data {
     }
 
     info!("parse childs {} ms", (precise_time_ns() - start1)/ 1000000);
-//    println!("load time {} ms", (precise_time_ns() - start)/ 1000000);
     return data;
 }
 
@@ -75,7 +74,8 @@ fn process_childs(user_id: &UserId, parent: &ItemId, data: &mut Data, children: 
 
 pub fn get_timestamp(pool: &Pool) -> Timestamp {
     let timestamp: Vec<Timestamp> =
-        pool.prep_exec("SELECT timestamp from ngs_regionnews.auth_timestamp where `index` = 0", ())
+        pool.prep_exec("SELECT timestamp \
+        from ngs_regionnews.auth_timestamp where `index` = 0", ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|row| {
                     row.get("timestamp").unwrap()
@@ -90,11 +90,22 @@ pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(Item
     let mut map: HashMap<String, ItemId> = HashMap::new();
 
     let items: Vec<Item> =
-        pool.prep_exec("SELECT name, biz_rule as rule, data, type as item_type from ngs_regionnews.auth_item", ())
+        pool.prep_exec("SELECT name, biz_rule as rule, data, type as item_type \
+        from ngs_regionnews.auth_item", ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|mut row| {
-                    let data: String = row.take("data").unwrap();
-                    let mut d = Deserializer::from_str(&data);
+                    let empty = "".to_string();
+                    let data: String =  match row.take_opt("data") {
+                        Some(col) => match col {
+                            Ok(value) => value,
+                            _ => empty
+                        },
+                        _ => empty
+                    };
+                    let jdata = match json::parse(&data) {
+                        Ok(value) => value,
+                        _ => json::JsonValue::new_object()
+                    };
                     let name:String = row.take("name").unwrap();
                     if !map.contains_key(&name) {
                         counter += 1;
@@ -102,9 +113,7 @@ pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(Item
                     }
                     Item {
                         name: map.get(&name).unwrap().clone(),
-//                        rule: row.take("rule").unwrap(),
-                        data: d.parse(),
-//                        item_type: row.take("item_type").unwrap(),
+                        data: jdata,
                     }
                 }).collect()
             }).unwrap();
@@ -112,11 +121,22 @@ pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(Item
 
 
     let assignments: Vec<Assignment> =
-        pool.prep_exec("SELECT user_id, item_name as name, biz_rule as rule, data from ngs_regionnews.auth_assignment", ())
+        pool.prep_exec("SELECT user_id, item_name as name, biz_rule as rule, data \
+        from ngs_regionnews.auth_assignment", ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|mut row| {
-                    let data: String = row.take("data").unwrap();
-                    let mut d = Deserializer::from_str(&data);
+                    let empty = "".to_string();
+                    let data: String =  match row.take_opt("data") {
+                        Some(col) => match col {
+                            Ok(value) => value,
+                            _ => empty
+                        },
+                        _ => empty
+                    };
+                    let jdata = match json::parse(&data) {
+                        Ok(value) => value,
+                        _ => json::JsonValue::new_object()
+                    };
                     let name: String = row.take("name").unwrap();
                     if !map.contains_key(&name) {
                         counter += 1;
@@ -127,20 +147,20 @@ pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(Item
                     Assignment {
                         user_id,
                         name: map.get(&name).unwrap().clone(),
-//                        rule: row.take("rule").unwrap(),
-                        data: d.parse(),
+                        data: jdata,
                     }
-                }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
+                }).collect()
             }).unwrap();
 
     let parents: Vec<(ItemId, ItemId)> =
-        pool.prep_exec("SELECT parent, child from ngs_regionnews.auth_item_child  ORDER BY parent DESC", ())
+        pool.prep_exec("SELECT parent, child \
+        from ngs_regionnews.auth_item_child  ORDER BY parent DESC", ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|mut row| {
                     let parent:String = row.take("parent").unwrap();
                     let child:String = row.take("child").unwrap();
                     return (map.get(&parent).unwrap().clone(), map.get(&child).unwrap().clone());
-                }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
+                }).collect()
             }).unwrap();
     info!("fetch time {} ms", (precise_time_ns() - start)/ 1000000);
     return (map, items, parents, assignments);

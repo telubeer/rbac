@@ -34,14 +34,12 @@ use self::futures_cpupool::CpuPool;
 
 #[derive(Clone)]
 struct WebService {
-    thread_pool: CpuPool,
     data: Arc<RwLock<Data>>,
 }
 
 impl WebService {
-    pub fn new(thread_pool: CpuPool, data: Arc<RwLock<Data>>) -> WebService {
+    pub fn new(data: Arc<RwLock<Data>>) -> WebService {
         WebService {
-            thread_pool,
             data: data.clone(),
         }
     }
@@ -55,7 +53,6 @@ impl Service for WebService {
 
     fn call(&self, req: Request) -> Self::Future {
         let data = self.data.clone();
-        let threadp = self.thread_pool.clone();
         let fr = match (req.method(), req.path()) {
             (&Post, "/check") => {
                 let r =
@@ -132,9 +129,9 @@ pub fn run(listen: &str, data: Arc<RwLock<Data>>, _tx: Sender<i8>, _remote: Remo
 fn serve(addr: &SocketAddr,
          protocol: &Http,
          data: Arc<RwLock<Data>>) {
+
     let mut core = Core::new().unwrap();
     let handle = core.handle();
-    let thread_pool = CpuPool::new(2);
 
     let listener = net2::TcpBuilder::new_v4()
         .unwrap()
@@ -149,7 +146,7 @@ fn serve(addr: &SocketAddr,
     core.run(listener
         .incoming()
         .for_each(|(socket, addr)| {
-            let s = WebService::new(thread_pool.clone(), data.clone());
+            let s = WebService::new(data.clone());
             protocol.bind_connection(&handle, socket, addr, s);
             Ok(())
         })
