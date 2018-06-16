@@ -42,8 +42,9 @@ impl Data {
         }
     }
 
-    pub fn check_access(&self, user_id: UserId, action: String, params: &JsonValue) -> bool {
-        if let Some(item_id) = self.map.get(&action) {
+    pub fn check_access<S>(&self, user_id: UserId, action: S, params: &JsonValue)
+                           -> bool where S: Into<String> {
+        if let Some(item_id) = self.map.get(&action.into()) {
             if let Some(assignments) = self.assignments.get(&user_id) {
                 return self.check(&user_id, item_id.clone(), &assignments, params);
             }
