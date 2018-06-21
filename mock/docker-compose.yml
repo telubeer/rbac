@@ -1,0 +1,6 @@
+db:
+    image: mariadb
+    volumes:
+    -   "./mysql:/var/lib/mysql"
+    ports:
+    -   "127.0.0.1:3306:3306"

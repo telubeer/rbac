@@ -11,6 +11,7 @@
 //!         [server]
 //!         host = "0.0.0.0"
 //!         port = "8000"
+//!         workers = 1
 //!         [db]
 //!         host = "0.0.0.0"
 //!         port = "3306"
@@ -23,6 +24,7 @@
 //!     let conf: Config = toml::from_str(&cstr).unwrap();
 //!     assert_eq!(conf.get_bind(), "0.0.0.0:8000");
 //!     assert_eq!(conf.get_dsn(), "mysql://user:pass@0.0.0.0:3306");
+//!     assert_eq!(conf.get_workers(), 1 as u8);
 //! }
 //! ```
 
@@ -34,7 +36,8 @@ use toml;
 #[derive(Deserialize, Debug)]
 struct ServerConfig {
     host: String,
-    port: String
+    port: String,
+    workers: u8
 }
 
 #[derive(Deserialize, Debug)]
@@ -63,6 +66,11 @@ impl Config {
     /// получаем время для таймера проверки актуальности настроек рбак
     pub fn get_timer(&self) -> u64 {
         self.options.timer
+    }
+
+    /// получаем количество воркеров для сервера
+    pub fn get_workers(&self) -> u8 {
+        self.server.workers
     }
 
     /// получаем строку с айпи и портом на котором будет висеть сервис

@@ -112,17 +112,17 @@ impl Future for FutureResponse {
 }
 
 
-pub fn run(listen: &str, data: Arc<RwLock<Data>>, _tx: Sender<i8>, _remote: Remote) {
+pub fn run(listen: &str, data: Arc<RwLock<Data>>, _tx: Sender<i8>, _remote: Remote, workers: u8) {
     let addr = listen.to_string().parse().unwrap();
-    let num = num_cpus::get();
+//    let num = num_cpus::get();
     let protocol = Arc::new(Http::new());
-    for i in 0..num - 1 {
+    for i in 0..workers - 1 {
         println!("spawn {:?}", i);
         let protocol2 = protocol.clone();
         let data_arc = data.clone();
         thread::spawn(move || serve(&addr, &protocol2, data_arc));
     }
-    println!("spawn {:?}", num);
+    println!("spawn {:?}", workers);
     serve(&addr, &protocol, data.clone());
 }
 

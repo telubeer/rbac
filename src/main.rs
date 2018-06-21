@@ -41,35 +41,42 @@ fn main() {
     let remote_server = worker_core.remote();
     thread::spawn(move || {
         info!("spawned server thread");
-        run(&bind_to, data_arc_server, tx.clone(), remote_server);
+        run(&bind_to, data_arc_server, tx.clone(), remote_server, config.get_workers());
     });
 
     let data_worker = data_arc.clone();
     worker_core.run(rx.for_each(move |item| {
         info!("spawned worker thread");
         let mut timestamp = 0;
-        let need_reload = match item {
-            1 => {
-                timestamp = get_timestamp(&pool_arc.read().unwrap());
-                let data_read = &data_worker.read().unwrap();
-                timestamp != data_read.timestamp
-            }
-            2 => {
-                true
-            }
-            _ => {
-                false
+        let pool: &Pool = &pool_arc.read().unwrap();
+        match pool.get_conn() {
+            Ok(conn) => {
+                let need_reload = match item {
+                    1 => {
+                        timestamp = get_timestamp(pool);
+                        let data_read = &data_worker.read().unwrap();
+                        timestamp != data_read.timestamp
+                    }
+                    2 => {
+                        true
+                    }
+                    _ => {
+                        false
+                    }
+                };
+
+                if need_reload {
+                    info!("do reload by request - start");
+                    let data = load(pool, timestamp);
+                    let mut data_write = data_worker.write().unwrap();
+                    *data_write = data;
+                    info!("do reload by request - done");
+                }
+            },
+            Err(e) => {
+                info!("connection error {:?}", e);
             }
         };
-
-        if need_reload {
-            debug!("do reload by request - start");
-            let data = load(&pool_arc.read().unwrap(), timestamp);
-            let mut data_write = data_worker.write().unwrap();
-            *data_write = data;
-            debug!("do reload by request - done");
-        }
-
         Ok(())
     })).expect("Failed to spawn worker thread");
 }

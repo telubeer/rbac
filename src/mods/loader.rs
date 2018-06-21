@@ -7,6 +7,7 @@ use std::collections::{HashSet, HashMap};
 use self::mysql::Pool;
 
 pub fn load(pool: &Pool, timestamp: Timestamp) -> Data {
+    info!("loading...");
     let (map, mut items, mut parents, mut assignments) = load_items(pool);
 //    let start = precise_time_ns();
     let mut data = Data::new(timestamp);

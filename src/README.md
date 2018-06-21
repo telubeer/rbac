@@ -1,5 +1,5 @@
 запуск
-BIND="0.0.0.0:8000" DSN="mysql://user:pass@ip:port" cargo run --release
+cargo run --release -- --config=config.dev.toml
 
 тесты 
 cargo test
