@@ -95,9 +95,9 @@ impl Config {
     }
 }
 /// получаем структуру конфига из файла, переданного через аргумент коммандной строки
-/// ```
+///
 /// rbac --config=config.toml
-/// ```
+///
 pub fn load_config() -> Config {
     let config_file: String = get_config_file_name().unwrap();
     let mut chdl = match File::open(&config_file) {

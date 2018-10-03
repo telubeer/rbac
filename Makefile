@@ -19,4 +19,4 @@ build-archpkg:
 	chown -R builder .
 	cd .pkgbuild; sudo -u builder makepkg -sc --noconfirm
 	ls .pkgbuild/*pkg.tar.xz
-	#curl --fail -s -XPOST -F "package_file=@$(ls *pkg.tar.xz)" "http://repo.s:4441/v1/add?system=autodetect&path=arch-ngs-stable&force=1"
+	#curl --fail -s -XPOST -F "package_file=@$(ls *pkg.tar.xz)" "http://repo.s:4441/v1/add?system=autodetect&path=arch-portal-stable&force=1"

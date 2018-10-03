@@ -2,4 +2,6 @@
 **/*.rs.bk
 .idea/
 .pkgbuild
+.pkgbuild/
 config.dev.toml
+mock/
