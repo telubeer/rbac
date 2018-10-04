@@ -1,32 +1,27 @@
 use std::net::SocketAddr;
-
-use tokio_core::reactor::Remote;
-
+use tokio::runtime::current_thread::Handle;
 use futures::{future, Future, Stream, Sink};
 use futures::sync::mpsc::Sender;
-
-extern crate time;
-extern crate num_cpus;
-
 use json;
-
 use std::sync::{Arc, RwLock};
-
 use mods::rbac::{Data, UserId};
 use json::JsonValue;
+use hyper;
 use hyper::service::{NewService, Service};
 use hyper::{Body,Error,Response,StatusCode,Request,Server,Method, Chunk};
 use std::str;
 
+type CEvent = u8;
+
 #[derive(Clone)]
 struct WebService {
     data: Arc<RwLock<Data>>,
-    tx: Sender<i8>,
-    remote: Remote,
+    tx: Sender<CEvent>,
+    remote: Handle,
 }
 
 impl WebService {
-    pub fn new(data: Arc<RwLock<Data>>, tx: Sender<i8>, remote: Remote) -> WebService {
+    pub fn new(data: Arc<RwLock<Data>>, tx: Sender<CEvent>, remote: Handle) -> WebService {
         WebService {
             data: data.clone(),
             tx: tx.clone(),
@@ -61,21 +56,11 @@ impl Service for WebService {
         let mut response = Response::new(Body::empty());
         match (req.method(), req.uri().path()) {
             (&Method::POST, "/reload") => {
-                remote.spawn(move|_| {
-                    tx.send(2)
-                        .then(|tx| {
-                            match tx {
-                                Ok(_tx) => {
-                                    debug!("send work");
-                                    Ok(())
-                                }
-                                Err(e) => {
-                                    error!("send work failed! {:?}", e);
-                                    Err(())
-                                }
-                            }
-                        })
-                });
+                remote.spawn(
+                    tx.send(2).then(|_| {
+                        Ok(())
+                    })
+                ).unwrap();
                 *response.status_mut() = StatusCode::OK;
             }
             (&Method::GET, "/health") => {
@@ -132,8 +117,8 @@ impl Service for WebService {
 
 pub fn run(listen: &str,
            data: Arc<RwLock<Data>>,
-           tx: Sender<i8>,
-           remote: Remote,
+           tx: Sender<CEvent>,
+           remote: Handle,
            _workers: u8) {
     let addr = listen.to_string().parse().unwrap();
     serve(&addr, data.clone(), tx.clone(), remote.clone());
@@ -141,8 +126,8 @@ pub fn run(listen: &str,
 
 fn serve(addr: &SocketAddr,
          data: Arc<RwLock<Data>>,
-         tx: Sender<i8>,
-         remote: Remote) {
+         tx: Sender<CEvent>,
+         remote: Handle) {
 
     let server = Server::bind(&addr)
         .serve(move || WebService::new(data.clone(), tx.clone(), remote.clone()).new_service())
