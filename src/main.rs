@@ -1,115 +1,105 @@
-#![feature(test)]
-extern crate test;
+extern crate rbac;
 extern crate mysql;
-#[macro_use(object, array)]
-extern crate json;
-extern crate time;
+extern crate tokio;
+extern crate futures;
+#[macro_use] extern crate log;
+extern crate env_logger;
 
-use time::precise_time_ns;
-mod mods;
-mod tests;
-use mods::rbac::{Assignment,Data,Item};
-use mods::phpdeserializer::Deserializer;
-use mysql as my;
-use std::collections::{HashSet};
-use std::sync::{Arc,Mutex};
+use mysql::Pool;
+use std::sync::{Arc, RwLock};
+use rbac::mods::server::run;
+use rbac::mods::loader::{load, get_timestamp};
+use rbac::mods::config::load_config;
+use rbac::mods::rbac::Data;
+use std::thread;
+use std::time::{Duration, Instant};
+use tokio::timer::Interval;
+use tokio::runtime::current_thread::{Runtime};
+use futures::{Future, Stream, Sink};
+use futures::sync::mpsc::{channel, Receiver, Sender};
+
 
 fn main() {
-    let data = Arc::new(Mutex::new(load()));
+    env_logger::init();
+    let config = load_config();
+    let bind_to = config.get_bind();
+    let dsn = config.get_dsn();
+    let pool = Pool::new(&dsn).expect("Failed to initialize db pool");
 
-/*    for parent in data.parents.get("ncc.region.access").unwrap().iter() {
-        println!("{:?}", parent)
-    };*/
-    /*let params = object! {
-           "region" => "54",
-           "project" => "1",
-        };
-    let user = "14338667".to_string();
-    let action = "ncc.records.update.access".to_string();
-    */
-    let start = precise_time_ns();
-    //let r = data.check_access(user, action, &params);
+    let data = load(&pool, get_timestamp(&pool));
+    info!("loaded rules for {:?} users", data.assignments.len());
 
-    let end = precise_time_ns();
-//    println!("{:?}", r);
-    println!("{} ns for whatever you did.", end - start);
+    let data_arc = Arc::new(RwLock::new(data));
+
+    let(tx,rx) = channel::<u8>(2);
+
+    let mut runtime = Runtime::new()
+        .expect("create runtime failed");
+    runtime.spawn(get_timer(config.get_timer(), tx.clone()));
+    runtime.spawn(get_worker(rx, pool, data_arc.clone()));
+
+    let handle = runtime.handle();
+    thread::spawn(move || {
+        info!("spawned server thread");
+        run(&bind_to, data_arc.clone(), tx.clone(), handle, config.get_workers());
+    });
+
+    runtime
+        .run()
+        .expect("runtime start failed");
 }
 
-fn load() -> Data {
-    let (mut items, mut parents, mut assignments) = load_items();
+fn get_worker(rx: Receiver<u8>, pool: Pool, data_arc: Arc<RwLock<Data>>)
+    -> impl Future<Item=(), Error=()>
+{
+    rx
+        .for_each(move|event| {
+            match pool.get_conn() {
+                Ok(_conn) => {
+                    let timestamp = get_timestamp(&pool);
+                    let need_reload = match event {
+                        1 => {
+                            let data_read = &data_arc.read().unwrap();
+                            timestamp != data_read.timestamp
+                        }
+                        2 => {
+                            true
+                        }
+                        _ => {
+                            false
+                        }
+                    };
 
-    let mut data = Data::new();
-    while items.len() > 0 {
-        let item = items.pop().unwrap();
-        let name = item.name.clone();
-        data.items.insert(name, item);
-    }
-    while parents.len() > 0 {
-        let (parent, child) = parents.pop().unwrap();
-        if !data.parents.contains_key(&child) {
-            let c = child.clone();
-            data.parents.insert(c, Vec::new());
-        }
-        let vec = data.parents.get_mut(&child).unwrap();
-        vec.push(parent);
-    }
-    while assignments.len() > 0 {
-        let assignment = assignments.pop().unwrap();
-        let user = assignment.user_id.clone();
-        let name = assignment.name.clone();
-        if !data.assignments.contains_key(&user) {
-            let u = user.clone();
-            data.assignments.insert(u, HashSet::new());
-        }
-        let hashmap = data.assignments.get_mut(&user).unwrap();
-        hashmap.insert(name);
-        let name = assignment.name.clone();
-        data.assignments_dict.insert(name, assignment);
-    }
-    return data;
+                    if need_reload {
+                        info!("do reload by request - start event={:?}", event);
+                        let data = load(&pool, timestamp);
+                        let mut data_write = data_arc.write().unwrap();
+                        *data_write = data;
+                        info!("do reload by request - done");
+                    }
+                },
+                Err(e) => {
+                    error!("db connection error {:?}", e);
+                }
+            };
+            Ok(())
+        })
+        .map_err(|e| error!("channel reciever err={:?}", e))
 }
 
-fn load_items() -> (Vec<Item>, Vec<(String, String)>, Vec<Assignment>) {
-    let bind_to = env::var("DSN").ok()
-        .expect("You should set mysql connection settings mysql://user:pass@ip:port in DSN env var");
-    let pool = my::Pool::new(&bind_to).unwrap();
-    let items: Vec<Item> =
-        pool.prep_exec("SELECT name, biz_rule as rule, data, type as item_type from ngs_regionnews.auth_item", ())
-            .map(|result| {
-                result.map(|x| x.unwrap()).map(|mut row| {
-                    let data: String = row.take("data").unwrap();
-                    let mut d = Deserializer::from_str(&data);
-                    Item {
-                        name: row.take("name").unwrap(),
-                        rule: row.take("rule").unwrap(),
-                        data: d.parse(),
-                        item_type: row.take("item_type").unwrap(),
-                    }
-                }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
-            }).unwrap();
-
-    let parents: Vec<(String, String)> =
-        pool.prep_exec("SELECT parent, child from ngs_regionnews.auth_item_child  ORDER BY parent DESC", ())
-            .map(|result| {
-                result.map(|x| x.unwrap()).map(|row| {
-                    let (parent, child) = my::from_row(row);
-                    return (parent, child);
-                }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
-            }).unwrap();
-
-    let assignments: Vec<Assignment> =
-        pool.prep_exec("SELECT user_id, item_name as name, biz_rule as rule, data from ngs_regionnews.auth_assignment", ())
-            .map(|result| {
-                result.map(|x| x.unwrap()).map(|mut row| {
-                    let data: String = row.take("data").unwrap();
-                    let mut d = Deserializer::from_str(&data);
-                    Assignment {
-                        user_id: row.take("user_id").unwrap(),
-                        name: row.take("name").unwrap(),
-                        rule: row.take("rule").unwrap(),
-                        data: d.parse(),
-                    }
-                }).collect() // Collect payments so now `QueryResult` is mapped to `Vec<Payment>`
-            }).unwrap();
-    return (items, parents, assignments);
+fn get_timer(duration: u64, tx_worker: Sender<u8>)
+    -> impl Future<Item=(), Error=()>
+{
+    Interval::new(
+        Instant::now(),
+        Duration::from_secs(duration)
+    )
+        .for_each(move|instant| {
+            match tx_worker.clone().send(1).wait() {
+                Ok(_) => info!("timer event sended {:?}", instant),
+                Err(e) => error!("send event err={:?}", e)
+            };
+            Ok(())
+        })
+        .map_err(|e| { error!("timer err={:?}", e) })
 }

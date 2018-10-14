@@ -1,44 +1,53 @@
 extern crate json;
+
 use std::collections::{HashMap, HashSet};
 use json::JsonValue;
 
-#[derive(Debug)]
+pub type UserId = u32;
+pub type ItemId = u16;
+pub type Timestamp = u32;
+
+#[derive(Debug, Clone)]
 pub struct Data {
-    pub assignments: HashMap<String, HashSet<String>>,
-    pub assignments_dict: HashMap<String, Assignment>,
-    pub items: HashMap<String, Item>,
-    pub parents: HashMap<String, Vec<String>>
+    pub timestamp: Timestamp,
+    pub map: HashMap<String, ItemId>,
+    pub assignments: HashMap<UserId, HashSet<ItemId>>,
+    pub assignments_dict: HashMap<ItemId, Assignment>,
+    pub items: HashMap<ItemId, Item>,
+    pub parents: HashMap<UserId, HashMap<ItemId, HashSet<ItemId>>>
 }
 
 #[derive(Debug, Clone)]
 pub struct Item {
-    pub name: String,
-    pub rule: Option<String>,
+    pub name: ItemId,
     pub data: json::JsonValue,
-    pub item_type: i64,
 }
 
 #[derive(Debug, Clone)]
 pub struct Assignment {
-    pub user_id: String,
-    pub name: String,
-    pub rule: Option<String>,
+    pub user_id: UserId,
+    pub name: ItemId,
     pub data: json::JsonValue,
 }
 
 impl Data {
-    pub fn new() -> Self {
+    pub fn new(timestamp: Timestamp) -> Self {
         Data {
+            timestamp,
             assignments: HashMap::new(),
             assignments_dict: HashMap::new(),
             items: HashMap::new(),
-            parents: HashMap::new()
+            parents: HashMap::new(),
+            map: HashMap::new()
         }
     }
 
-    pub fn check_access(&self, user_id: String, action: String, params: &JsonValue) -> bool {
-        if let Some(assignments) = self.assignments.get(&user_id) {
-            return self.check(action, &assignments, params);
+    pub fn check_access<S>(&self, user_id: UserId, action: S, params: &JsonValue)
+                           -> bool where S: Into<String> {
+        if let Some(item_id) = self.map.get(&action.into()) {
+            if let Some(assignments) = self.assignments.get(&user_id) {
+                return self.check(&user_id, item_id.clone(), &assignments, params);
+            }
         }
         return false;
     }
@@ -48,9 +57,9 @@ impl Data {
     **/
     pub fn rule(&self, data: &JsonValue, params: &JsonValue) -> bool {
         if let Some(key) = data["paramsKey"].as_str() {
-            if let Some(value) = params[key].as_str() {
+            if params.has_key(key) {
                 if data["data"].is_array() {
-                    return data["data"].contains(value);
+                    return data["data"].contains(params[key].clone());
                 } else {
                     return true;
                 }
@@ -62,7 +71,7 @@ impl Data {
         }
     }
 
-    fn check(&self, action: String, assignments: &HashSet<String>, params: &JsonValue) -> bool {
+    fn check(&self, user_id: &UserId, action: ItemId, assignments: &HashSet<ItemId>, params: &JsonValue) -> bool {
         match self.items.get(&action) {
             Some(item) => {
                 if !self.rule(&item.data, params) {
@@ -78,25 +87,16 @@ impl Data {
                 return true;
             }
         }
-
-        if let Some(parents) = self.parents.get(&action) {
-            for parent in parents {
-                if self.check(parent.to_string(), &assignments, params) {
-                    return true;
+        if let Some(user_parents) = self.parents.get(user_id) {
+            if let Some(parents) = user_parents.get(&action) {
+                for parent in parents {
+                    if self.check(user_id, parent.clone(), &assignments, params) {
+                        return true;
+                    }
                 }
             }
         }
-        return false;
-    }
-}
 
-impl Item {
-    pub fn new(name: String, item_type: i64) -> Self {
-        Item {
-            name,
-            rule: Some("".to_string()),
-            data: json::JsonValue::new_object(),
-            item_type,
-        }
+        return false;
     }
 }

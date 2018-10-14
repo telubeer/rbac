@@ -1,0 +1,11 @@
+[Unit]
+Description=NCC RBAC service
+
+[Service]
+ExecStart=/usr/bin/rbac --config=/etc/rbac/config.toml
+ExecReload=/bin/kill -SIGUSR2 $MAINPID
+Restart=always
+PIDFile=/var/run/rbac.pid
+
+[Install]
+WantedBy=multi-user.target

@@ -5,10 +5,13 @@ authors = ["Sergey Shlykov <s.shlykov@office.ngs.ru>"]
 
 [dependencies]
 mysql = "12.0.3"
-json = "0.11.12"                 # JSON implementation in Rust
-futures = "*"
-tokio-io="*"
-tokio-core="*"
-tokio-proto="*"
-tokio-service="*"
-time = "*"
+json = "0.11.12"
+futures = "0.1.17"
+time = "0.1"
+toml = "*"
+tokio = "0.1"
+log = "0.4"
+env_logger = "*"
+hyper = "0.12"
+serde = "*"
+serde_derive = "*"
