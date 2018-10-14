@@ -17,14 +17,21 @@
 //!         port = "3306"
 //!         user = "user"
 //!         pass = "pass"
-//!         name = "name"
+//!         database = "name"
+//!         query_timestamp = "SELECT timestamp from auth_timestamp where `index` = 0"
+//!         query_items = "SELECT name, data from auth_item"
+//!         query_assignments = "SELECT user_id, name, data from auth_assignment"
+//!         query_relations = "SELECT parent, child from auth_item_child  ORDER BY parent DESC"
 //!         [options]
 //!         timer = 160
 //!     "#;
 //!     let conf: Config = toml::from_str(&cstr).unwrap();
 //!     assert_eq!(conf.get_bind(), "0.0.0.0:8000");
 //!     assert_eq!(conf.get_dsn(), "mysql://user:pass@0.0.0.0:3306");
-//!     assert_eq!(conf.get_workers(), 1 as u8);
+//!     assert_eq!(conf.get_query_timestamp(), "auth_timestamp");
+//!     assert_eq!(conf.get_query_items(), "auth_item");
+//!     assert_eq!(conf.get_query_assignments(), "auth_assignment");
+//!     assert_eq!(conf.get_query_relations(), "auth_item_child");
 //! }
 //! ```
 
@@ -46,7 +53,10 @@ struct DbConfig {
     port: String,
     user: String,
     pass: String,
-    name: String,
+    query_timestamp: String,
+    query_items: String,
+    query_assignments: String,
+    query_relations: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -92,6 +102,19 @@ impl Config {
         out.push_str(":");
         out.push_str(&self.db.port);
         out
+    }
+
+    pub fn get_query_timestamp(&self) -> &String {
+        &self.db.query_timestamp
+    }
+    pub fn get_query_items(&self) -> &String {
+        &self.db.query_items
+    }
+    pub fn get_query_assignments(&self) -> &String {
+        &self.db.query_assignments
+    }
+    pub fn get_query_relations(&self) -> &String {
+        &self.db.query_relations
     }
 }
 /// получаем структуру конфига из файла, переданного через аргумент коммандной строки

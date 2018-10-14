@@ -17,6 +17,7 @@ use tokio::timer::Interval;
 use tokio::runtime::current_thread::{Runtime};
 use futures::{Future, Stream, Sink};
 use futures::sync::mpsc::{channel, Receiver, Sender};
+use rbac::mods::config::Config;
 
 
 fn main() {
@@ -26,22 +27,22 @@ fn main() {
     let dsn = config.get_dsn();
     let pool = Pool::new(&dsn).expect("Failed to initialize db pool");
 
-    let data = load(&pool, get_timestamp(&pool));
+    let data = load(&pool, get_timestamp(&pool, &config), &config);
     info!("loaded rules for {:?} users", data.assignments.len());
 
     let data_arc = Arc::new(RwLock::new(data));
 
     let(tx,rx) = channel::<u8>(2);
-
+    let workers = config.get_workers();
     let mut runtime = Runtime::new()
         .expect("create runtime failed");
     runtime.spawn(get_timer(config.get_timer(), tx.clone()));
-    runtime.spawn(get_worker(rx, pool, data_arc.clone()));
+    runtime.spawn(get_worker(rx, pool, data_arc.clone(), config));
 
     let handle = runtime.handle();
     thread::spawn(move || {
         info!("spawned server thread");
-        run(&bind_to, data_arc.clone(), tx.clone(), handle, config.get_workers());
+        run(&bind_to, data_arc.clone(), tx.clone(), handle, workers);
     });
 
     runtime
@@ -49,14 +50,14 @@ fn main() {
         .expect("runtime start failed");
 }
 
-fn get_worker(rx: Receiver<u8>, pool: Pool, data_arc: Arc<RwLock<Data>>)
+fn get_worker(rx: Receiver<u8>, pool: Pool, data_arc: Arc<RwLock<Data>>, config: Config)
     -> impl Future<Item=(), Error=()>
 {
     rx
         .for_each(move|event| {
             match pool.get_conn() {
                 Ok(_conn) => {
-                    let timestamp = get_timestamp(&pool);
+                    let timestamp = get_timestamp(&pool, &config);
                     let need_reload = match event {
                         1 => {
                             let data_read = &data_arc.read().unwrap();
@@ -72,7 +73,7 @@ fn get_worker(rx: Receiver<u8>, pool: Pool, data_arc: Arc<RwLock<Data>>)
 
                     if need_reload {
                         info!("do reload by request - start event={:?}", event);
-                        let data = load(&pool, timestamp);
+                        let data = load(&pool, timestamp, &config);
                         let mut data_write = data_arc.write().unwrap();
                         *data_write = data;
                         info!("do reload by request - done");

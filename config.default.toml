@@ -7,6 +7,13 @@ host = "dbread-proxy"
 port = "3306"
 user = "rbac"
 pass = "rbac"
-name = "ngs_regionnews"
+#запрос получения метки последнего изменения настроек rbac
+query_timestamp = "SELECT timestamp from auth_timestamp where `index` = 0"
+#запрос получения имен сущностей и данных для проверки в формате json
+query_items = "SELECT name, data from auth_item"
+#запрос получения привязки пользователей к ролям и данных для проверки в формате json
+query_assignments = "SELECT user_id, name, data from auth_assignment"
+#запрос для получения графа правил rbac
+query_relations = "SELECT parent, child from auth_item_child  ORDER BY parent DESC"
 [options]
 timer = 60

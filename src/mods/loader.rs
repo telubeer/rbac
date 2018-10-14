@@ -5,10 +5,12 @@ use self::time::precise_time_ns;
 use mods::rbac::{Assignment, Data, Item, ItemId, UserId, Timestamp};
 use std::collections::{HashSet, HashMap};
 use self::mysql::Pool;
+use mods::config::Config;
 
-pub fn load(pool: &Pool, timestamp: Timestamp) -> Data {
+pub fn load(pool: &Pool, timestamp: Timestamp, config: &Config) -> Data {
     info!("loading...");
-    let (map, mut items, mut parents, mut assignments) = load_items(pool);
+    let (map, mut items, mut parents, mut assignments)
+    = load_items(pool, &config);
 //    let start = precise_time_ns();
     let mut data = Data::new(timestamp);
     data.map = map;
@@ -73,10 +75,9 @@ fn process_childs(user_id: &UserId, parent: &ItemId, data: &mut Data, children: 
     }
 }
 
-pub fn get_timestamp(pool: &Pool) -> Timestamp {
+pub fn get_timestamp(pool: &Pool, config: &Config) -> Timestamp {
     let timestamp: Vec<Timestamp> =
-        pool.prep_exec("SELECT timestamp \
-        from ngs_regionnews.auth_timestamp where `index` = 0", ())
+        pool.prep_exec(config.get_query_timestamp(), ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|row| {
                     row.get("timestamp").unwrap()
@@ -85,14 +86,13 @@ pub fn get_timestamp(pool: &Pool) -> Timestamp {
     *timestamp.get(0).or(Some(&0)).unwrap()
 }
 
-pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, ItemId)>, Vec<Assignment>) {
+pub fn load_items(pool: &Pool, config: &Config) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(ItemId, ItemId)>, Vec<Assignment>) {
     let start = precise_time_ns();
     let mut counter:ItemId = 0;
     let mut map: HashMap<String, ItemId> = HashMap::new();
 
     let items: Vec<Item> =
-        pool.prep_exec("SELECT name, biz_rule as rule, data, type as item_type \
-        from ngs_regionnews.auth_item", ())
+        pool.prep_exec(config.get_query_items(), ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|mut row| {
                     let empty = "".to_string();
@@ -122,8 +122,7 @@ pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(Item
 
 
     let assignments: Vec<Assignment> =
-        pool.prep_exec("SELECT user_id, item_name as name, biz_rule as rule, data \
-        from ngs_regionnews.auth_assignment", ())
+        pool.prep_exec(config.get_query_assignments(), ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|mut row| {
                     let empty = "".to_string();
@@ -154,8 +153,7 @@ pub fn load_items(pool: &Pool) -> (HashMap<String, ItemId>, Vec<Item>, Vec<(Item
             }).unwrap();
 
     let parents: Vec<(ItemId, ItemId)> =
-        pool.prep_exec("SELECT parent, child \
-        from ngs_regionnews.auth_item_child  ORDER BY parent DESC", ())
+        pool.prep_exec(config.get_query_relations(), ())
             .map(|result| {
                 result.map(|x| x.unwrap()).map(|mut row| {
                     let parent:String = row.take("parent").unwrap();
