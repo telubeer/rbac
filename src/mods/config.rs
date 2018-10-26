@@ -101,6 +101,7 @@ impl Config {
         out.push_str(&self.db.host);
         out.push_str(":");
         out.push_str(&self.db.port);
+        out.push_str("/?prefer_socket=false");
         out
     }
 
